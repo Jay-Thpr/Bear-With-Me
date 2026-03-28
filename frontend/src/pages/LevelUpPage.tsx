@@ -33,7 +33,6 @@ export function LevelUpPage() {
   const durationSec = state.durationSec ?? 0
   const skillLabel = state.skillLabel ?? 'Your skill'
   const skillId = state.skillId
-  const skill = state.skill
   const coachNote = state.coach_note
   const progressDelta = state.progress_delta
   const masteredDelta = state.mastered_delta
