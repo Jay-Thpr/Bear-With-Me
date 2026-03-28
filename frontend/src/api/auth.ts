@@ -1,3 +1,12 @@
+import {
+  completeMockGoogleSignIn,
+  disconnectMockGoogleIntegration,
+  getMockAuthMe,
+  getMockAuthStatus,
+  logoutMockSession,
+} from '../walkthrough/mockBackend'
+import { isWalkthroughMode, walkthroughHref } from '../walkthrough/mode'
+
 const apiBase = import.meta.env.VITE_API_URL ?? ''
 
 export type AuthUser = {
@@ -34,6 +43,9 @@ export type AuthStatusResponse = {
 }
 
 export async function fetchAuthMe(): Promise<AuthMeResponse> {
+  if (isWalkthroughMode()) {
+    return getMockAuthMe()
+  }
   const res = await fetch(`${apiBase}/api/auth/me`, { credentials: 'include' })
   if (!res.ok) {
     throw new Error(`Auth check failed: ${res.status}`)
@@ -42,6 +54,9 @@ export async function fetchAuthMe(): Promise<AuthMeResponse> {
 }
 
 export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
+  if (isWalkthroughMode()) {
+    return getMockAuthStatus()
+  }
   const res = await fetch(`${apiBase}/api/auth/status`, { credentials: 'include' })
   if (!res.ok) {
     throw new Error(`Auth status failed: ${res.status}`)
@@ -61,6 +76,12 @@ function errorMessageFromResponse(res: Response, bodyText: string): string {
 }
 
 export async function exchangeGoogleCode(code: string, state: string): Promise<void> {
+  if (isWalkthroughMode()) {
+    void code
+    void state
+    completeMockGoogleSignIn()
+    return
+  }
   const res = await fetch(`${apiBase}/api/auth/google/exchange`, {
     method: 'POST',
     credentials: 'include',
@@ -74,6 +95,10 @@ export async function exchangeGoogleCode(code: string, state: string): Promise<v
 }
 
 export async function logoutSession(): Promise<void> {
+  if (isWalkthroughMode()) {
+    logoutMockSession()
+    return
+  }
   const res = await fetch(`${apiBase}/api/auth/logout`, {
     method: 'POST',
     credentials: 'include',
@@ -84,6 +109,10 @@ export async function logoutSession(): Promise<void> {
 }
 
 export async function disconnectGoogleIntegration(): Promise<void> {
+  if (isWalkthroughMode()) {
+    disconnectMockGoogleIntegration()
+    return
+  }
   const res = await fetch(`${apiBase}/api/auth/google/disconnect`, {
     method: 'POST',
     credentials: 'include',
@@ -96,5 +125,8 @@ export async function disconnectGoogleIntegration(): Promise<void> {
 
 /** Browser navigates to backend; must be same origin as the app (Vite proxy) or full API URL. */
 export function googleLoginHref(): string {
+  if (isWalkthroughMode()) {
+    return walkthroughHref('/auth/callback?code=walkthrough-code&state=walkthrough-state')
+  }
   return `${apiBase}/api/auth/google`
 }

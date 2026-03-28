@@ -1,3 +1,5 @@
+import { isWalkthroughMode } from '../walkthrough/mode'
+
 const apiBase = import.meta.env.VITE_API_URL ?? ''
 
 export type UploadPhotoRequest = {
@@ -12,6 +14,10 @@ export type UploadPhotoRequest = {
 export async function uploadPhotoToGooglePhotos(
   body: UploadPhotoRequest,
 ): Promise<void> {
+  if (isWalkthroughMode()) {
+    void body
+    return
+  }
   const res = await fetch(`${apiBase}/api/photos/upload`, {
     method: 'POST',
     credentials: 'include',

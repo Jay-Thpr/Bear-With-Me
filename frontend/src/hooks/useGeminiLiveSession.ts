@@ -11,6 +11,7 @@ import {
 import { MicPcmStreamer } from '../live/micPcmStreamer'
 import { base64ToFloat32Pcm16Le } from '../live/pcmUtils'
 import { PcmPlaybackScheduler } from '../live/pcmPlayback'
+import { isWalkthroughMode } from '../walkthrough/mode'
 
 /** Live tool args may be camelCase or snake_case depending on the API. */
 function coachingTextFromToolArgs(
@@ -46,6 +47,8 @@ export function useGeminiLiveSession(
   const micRef = useRef<MicPcmStreamer | null>(null)
   const playbackRef = useRef<PcmPlaybackScheduler | null>(null)
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const walkthroughTimerRef = useRef<number | null>(null)
+  const walkthroughCaptionIntervalRef = useRef<number | null>(null)
   const userCaptionRef = useRef('')
   const modelCaptionRef = useRef('')
   const formCorrectionCooldownUntilRef = useRef(0)
@@ -131,6 +134,14 @@ export function useGeminiLiveSession(
     if (videoTimerRef.current) {
       clearInterval(videoTimerRef.current)
       videoTimerRef.current = null
+    }
+    if (walkthroughTimerRef.current) {
+      clearTimeout(walkthroughTimerRef.current)
+      walkthroughTimerRef.current = null
+    }
+    if (walkthroughCaptionIntervalRef.current) {
+      clearInterval(walkthroughCaptionIntervalRef.current)
+      walkthroughCaptionIntervalRef.current = null
     }
     await micRef.current?.stop()
     micRef.current = null
@@ -250,6 +261,35 @@ export function useGeminiLiveSession(
       setCoachError(null)
       activeSkillIdRef.current = options?.skillId
       activeSkillTitleRef.current = options?.skillTitle
+
+      if (isWalkthroughMode()) {
+        const skillLabel = options?.skillTitle || 'your skill'
+        const messages = [
+          `Walkthrough coach online. We are starting with the setup for ${skillLabel}. Show me your ready position.`,
+          'Good. Hold that setup for one more beat and keep the movement slow and repeatable.',
+          'Now do one clean repetition. I want control first, then consistency.',
+          'Nice. Repeat it three times with the same rhythm and keep one correction in mind.',
+        ]
+        walkthroughTimerRef.current = window.setTimeout(() => {
+          setCoachPhase('live')
+          modelCaptionRef.current = messages[0]
+          setModelCaption(messages[0])
+          let index = 1
+          walkthroughCaptionIntervalRef.current = window.setInterval(() => {
+            if (index >= messages.length) {
+              if (walkthroughCaptionIntervalRef.current) {
+                clearInterval(walkthroughCaptionIntervalRef.current)
+                walkthroughCaptionIntervalRef.current = null
+              }
+              return
+            }
+            modelCaptionRef.current = messages[index]
+            setModelCaption(messages[index])
+            index += 1
+          }, 4500)
+        }, 700)
+        return
+      }
 
       let accessToken: string
       let liveModel: string

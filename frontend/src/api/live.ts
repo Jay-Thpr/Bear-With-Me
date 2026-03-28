@@ -1,3 +1,5 @@
+import { isWalkthroughMode } from '../walkthrough/mode'
+
 const apiBase = import.meta.env.VITE_API_URL ?? ''
 
 export type LiveEphemeralTokenResponse = {
@@ -13,6 +15,17 @@ export type LiveEphemeralTokenResponse = {
 export async function fetchLiveEphemeralToken(
   skillId?: string,
 ): Promise<LiveEphemeralTokenResponse> {
+  if (isWalkthroughMode()) {
+    return {
+      accessToken: 'walkthrough-token',
+      liveModel: 'walkthrough-live',
+      systemInstruction: `Walkthrough mode is active. Coach the learner on ${skillId ?? 'their skill'} with short, proactive guidance and move through checkpoints one at a time.`,
+      liveContextVersion: 'walkthrough',
+      sourceResearchId: null,
+      sourceProgressEventIds: [],
+      truncated: false,
+    }
+  }
   const res = await fetch(`${apiBase}/api/live/ephemeral-token`, {
     method: 'POST',
     credentials: 'include',

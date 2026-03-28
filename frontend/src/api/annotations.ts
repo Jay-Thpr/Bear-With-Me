@@ -1,3 +1,6 @@
+import { requestMockAnnotation } from '../walkthrough/mockBackend'
+import { isWalkthroughMode } from '../walkthrough/mode'
+
 const apiBase = import.meta.env.VITE_API_URL ?? ''
 
 export type FormCorrectionRequest = {
@@ -16,6 +19,9 @@ export type FormCorrectionResponse = {
 export async function requestFormCorrection(
   body: FormCorrectionRequest,
 ): Promise<FormCorrectionResponse> {
+  if (isWalkthroughMode()) {
+    return requestMockAnnotation(body)
+  }
   const res = await fetch(`${apiBase}/api/annotations/form-correction`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

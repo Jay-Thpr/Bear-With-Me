@@ -1,6 +1,7 @@
 import { Link, Outlet } from 'react-router-dom'
 import { googleLoginHref } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
+import { isWalkthroughMode } from '../walkthrough/mode'
 import '../pages/Page.css'
 import './Layout.css'
 
@@ -13,6 +14,7 @@ const nav = [
 
 export function Layout() {
   const { user, googleIntegration, loading, logout, disconnectGoogle } = useAuth()
+  const walkthrough = isWalkthroughMode()
 
   return (
     <div className="layout">
@@ -27,6 +29,11 @@ export function Layout() {
           />
           Bear with me
         </Link>
+        {walkthrough ? (
+          <span className="layout__auth-muted" style={{ marginLeft: '0.75rem' }}>
+            Walkthrough mode
+          </span>
+        ) : null}
         <div className="layout__header-right">
           <nav className="layout__nav" aria-label="Main">
             {nav.map(({ to, label }) => (

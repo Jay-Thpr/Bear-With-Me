@@ -1,3 +1,13 @@
+import {
+  completeMockSession,
+  createMockSkill,
+  getMockLessonPlan,
+  getMockRecentSessions,
+  getMockSkill,
+  getMockSkills,
+} from '../walkthrough/mockBackend'
+import { isWalkthroughMode } from '../walkthrough/mode'
+
 const apiBase = import.meta.env.VITE_API_URL ?? ''
 
 export type SkillOut = {
@@ -78,6 +88,9 @@ export type ProgressEventOut = {
 }
 
 export async function fetchSkills(): Promise<SkillOut[]> {
+  if (isWalkthroughMode()) {
+    return getMockSkills()
+  }
   const res = await fetch(`${apiBase}/api/skills`, { credentials: 'include' })
   if (res.status === 401) {
     throw new Error('Sign in to load skills.')
@@ -90,6 +103,9 @@ export async function fetchSkills(): Promise<SkillOut[]> {
 }
 
 export async function fetchSkill(skillId: string): Promise<SkillOut> {
+  if (isWalkthroughMode()) {
+    return getMockSkill(skillId)
+  }
   const res = await fetch(`${apiBase}/api/skills/${encodeURIComponent(skillId)}`, {
     credentials: 'include',
   })
@@ -115,6 +131,9 @@ function errorFromResponse(res: Response, bodyText: string): string {
 export async function createSkillWithResearch(
   body: SkillCreateWithResearchBody,
 ): Promise<SkillWithResearchResponse> {
+  if (isWalkthroughMode()) {
+    return createMockSkill(body)
+  }
   const res = await fetch(`${apiBase}/api/skills/create-with-research`, {
     method: 'POST',
     credentials: 'include',
@@ -150,6 +169,9 @@ export type LessonPlanOut = {
 }
 
 export async function fetchLessonPlan(skillId: string): Promise<LessonPlanOut> {
+  if (isWalkthroughMode()) {
+    return getMockLessonPlan(skillId)
+  }
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/lesson-plan`,
     { credentials: 'include' },
@@ -191,6 +213,36 @@ export type ResearchStreamEvent =
 export async function* createSkillWithResearchStream(
   body: SkillCreateWithResearchBody,
 ): AsyncGenerator<ResearchStreamEvent> {
+  if (isWalkthroughMode()) {
+    yield {
+      type: 'status',
+      phase: 'research',
+      message: `Drafting a walkthrough dossier for ${body.title.trim()}...`,
+      pct: 20,
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 300))
+    yield {
+      type: 'status',
+      phase: 'lesson_plan',
+      message: 'Building lesson plan checkpoints...',
+      pct: 58,
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 300))
+    yield {
+      type: 'status',
+      phase: 'saving',
+      message: 'Saving walkthrough skill locally...',
+      pct: 88,
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250))
+    const done = createMockSkill(body)
+    yield {
+      type: 'done',
+      skill: done.skill,
+      research: done.research,
+    }
+    return
+  }
   const res = await fetch(`${apiBase}/api/skills/create-with-research-stream`, {
     method: 'POST',
     credentials: 'include',
@@ -239,6 +291,9 @@ export async function completeSession(
   skillId: string,
   body: SessionCompleteBody,
 ): Promise<SessionCompleteResponse> {
+  if (isWalkthroughMode()) {
+    return completeMockSession(skillId, body)
+  }
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/complete-session`,
     {
@@ -281,6 +336,10 @@ export type CharacterCreate = {
 }
 
 export async function fetchCharacter(skillId: string): Promise<CharacterOut | null> {
+  if (isWalkthroughMode()) {
+    void skillId
+    return null
+  }
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/character`,
     { credentials: 'include' },
@@ -299,6 +358,21 @@ export async function createCharacter(
   skillId: string,
   body: CharacterCreate,
 ): Promise<CharacterOut> {
+  if (isWalkthroughMode()) {
+    const now = new Date().toISOString()
+    return {
+      id: `walkthrough-character-${skillId}`,
+      skill_id: skillId,
+      user_sub: 'walkthrough-user',
+      name: body.name,
+      personality: body.personality,
+      coaching_style: body.coaching_style,
+      appearance_description: body.appearance_description ?? null,
+      image_url: body.image_url ?? null,
+      created_at: now,
+      updated_at: now,
+    }
+  }
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/character`,
     {
@@ -316,6 +390,10 @@ export async function createCharacter(
 }
 
 export async function deleteCharacter(skillId: string): Promise<void> {
+  if (isWalkthroughMode()) {
+    void skillId
+    return
+  }
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/character`,
     {
@@ -334,6 +412,9 @@ export async function deleteCharacter(skillId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchRecentSessions(limit = 10): Promise<SkillSessionSummaryOut[]> {
+  if (isWalkthroughMode()) {
+    return getMockRecentSessions(limit)
+  }
   const res = await fetch(
     `${apiBase}/api/skills/sessions/recent?limit=${limit}`,
     { credentials: 'include' },

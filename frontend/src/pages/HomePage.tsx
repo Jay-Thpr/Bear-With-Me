@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchHealth } from '../api/client'
+import { walkthroughHref } from '../walkthrough/mode'
 import './Page.css'
 
 const STEPS = [
@@ -53,6 +54,9 @@ export function HomePage() {
               </Link>
               <Link to="/select-skill" className="btn btn--ghost btn--lg">
                 Continue your journey!
+              </Link>
+              <Link to={walkthroughHref('/onboarding')} className="btn btn--ghost btn--lg">
+                Offline walkthrough
               </Link>
             </div>
             <div className="landing__api">
