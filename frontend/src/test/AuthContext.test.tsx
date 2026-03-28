@@ -32,6 +32,9 @@ describe('AuthProvider', () => {
         grantedScopes: ['scope-a'],
         photosAppendOnlyGranted: true,
         photosAppReadGranted: false,
+        driveFileGranted: false,
+        calendarEventsGranted: false,
+        documentsGranted: false,
       },
     })
 

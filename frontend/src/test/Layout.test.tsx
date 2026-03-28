@@ -45,6 +45,9 @@ describe('Layout', () => {
         grantedScopes: [],
         photosAppendOnlyGranted: true,
         photosAppReadGranted: false,
+        driveFileGranted: false,
+        calendarEventsGranted: false,
+        documentsGranted: false,
       },
     })
 

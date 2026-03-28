@@ -26,6 +26,9 @@ describe('SettingsPage', () => {
         ],
         photosAppendOnlyGranted: true,
         photosAppReadGranted: false,
+        driveFileGranted: false,
+        calendarEventsGranted: false,
+        documentsGranted: false,
       },
     })
     vi.spyOn(authApi, 'fetchAuthStatus').mockResolvedValue({
@@ -38,6 +41,9 @@ describe('SettingsPage', () => {
         grantedScopes: [],
         photosAppendOnlyGranted: true,
         photosAppReadGranted: false,
+        driveFileGranted: false,
+        calendarEventsGranted: false,
+        documentsGranted: false,
       },
     })
 

@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { completeSession } from '../api/skills'
+import { completeSession, fetchLessonPlan, type LessonPlanOut } from '../api/skills'
 import { useGeminiLiveSession } from '../hooks/useGeminiLiveSession'
 import { useCameraStream } from '../hooks/useCameraStream'
 import './Page.css'
@@ -59,8 +59,20 @@ export function SessionPage() {
       }
     }
   }, [sessionNav?.skillId, sessionNav?.skillTitle])
+  // Fetch real lesson plan checkpoints for this skill
+  useEffect(() => {
+    if (!skillId) return
+    let cancelled = false
+    fetchLessonPlan(skillId)
+      .then((plan) => { if (!cancelled) setLessonPlan(plan) })
+      .catch(() => { if (!cancelled) setLessonPlanError(true) })
+    return () => { cancelled = true }
+  }, [skillId])
+
   const { videoRef, mediaStream, status, errorMessage, start, stop, isLive } =
     useCameraStream({ audio: true })
+  const [lessonPlan, setLessonPlan] = useState<LessonPlanOut | null>(null)
+  const [lessonPlanError, setLessonPlanError] = useState(false)
   const [videoFrameReady, setVideoFrameReady] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   /** Same as `elapsed` but survives `stop()` / `isLive` resetting state before `completeSession` runs. */
@@ -281,24 +293,49 @@ export function SessionPage() {
 
         <div className="session-columns">
           <div className="session-side-panel">
-            <h3 className="session-side-panel__title">Session progress</h3>
-            <ol className="session-phase-list">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((step) => {
-                const done = step < phaseCurrent
-                const current = step === phaseCurrent
-                return (
-                  <li
-                    key={step}
-                    className={`session-phase${done ? ' session-phase--done' : ''}${
-                      current ? ' session-phase--current' : ''
-                    }`}
-                  >
-                    <span className="session-phase__idx">{done ? '✓' : step}</span>
-                    <span>Checkpoint {step}</span>
-                  </li>
-                )
-              })}
-            </ol>
+            <h3 className="session-side-panel__title">
+              {lessonPlan ? 'Checkpoints' : 'Session progress'}
+            </h3>
+            {!lessonPlan && lessonPlanError && (
+              <p style={{ margin: '0 0 0.6rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                ℹ️ Custom lesson plan unavailable, using generic checkpoints
+              </p>
+            )}
+            {lessonPlan ? (
+              <>
+                {lessonPlan.lesson_plan.tone ? (
+                  <p style={{ margin: '0 0 0.6rem', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Coach tone: {lessonPlan.lesson_plan.tone}
+                  </p>
+                ) : null}
+                <ol className="session-phase-list">
+                  {lessonPlan.lesson_plan.checkpoints.map((cp, idx) => (
+                    <li key={cp.id} className="session-phase">
+                      <span className="session-phase__idx">{idx + 1}</span>
+                      <span>{cp.goal}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <ol className="session-phase-list">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((step) => {
+                  const done = step < phaseCurrent
+                  const current = step === phaseCurrent
+                  return (
+                    <li
+                      key={step}
+                      className={`session-phase${done ? ' session-phase--done' : ''}${
+                        current ? ' session-phase--current' : ''
+                      }`}
+                    >
+                      <span className="session-phase__idx">{done ? '✓' : step}</span>
+                      <span>Checkpoint {step}</span>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
           </div>
 
           <div className="session-side-panel">

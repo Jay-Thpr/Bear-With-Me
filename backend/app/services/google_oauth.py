@@ -13,6 +13,9 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 PHOTOS_APPENDONLY_SCOPE = "https://www.googleapis.com/auth/photoslibrary.appendonly"
 PHOTOS_READ_APP_SCOPE = "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata"
+DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+DOCUMENTS_SCOPE = "https://www.googleapis.com/auth/documents"
 
 
 async def exchange_authorization_code(
@@ -137,4 +140,7 @@ def credential_capabilities(credential: GoogleOAuthCredential | None) -> dict[st
         "grantedScopes": sorted(scopes),
         "photosAppendOnlyGranted": PHOTOS_APPENDONLY_SCOPE in scopes,
         "photosAppReadGranted": PHOTOS_READ_APP_SCOPE in scopes,
+        "driveFileGranted": DRIVE_FILE_SCOPE in scopes,
+        "calendarEventsGranted": CALENDAR_EVENTS_SCOPE in scopes,
+        "documentsGranted": DOCUMENTS_SCOPE in scopes,
     }

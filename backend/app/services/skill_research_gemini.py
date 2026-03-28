@@ -89,33 +89,22 @@ def generate_skill_research_dossier(
         parts=[types.Part.from_text(text=prompt)],
     )
 
-    thinking = types.ThinkingConfig(
-        thinking_level=types.ThinkingLevel.HIGH,
-        include_thoughts=False,
-    )
+    # 16384 output tokens: 8 deep sections need room; 8192 cuts Practice design and Milestones short.
+    # No ThinkingConfig — thinking adds 20-60s latency for no meaningful gain on a breadth-first
+    # research task. Fast Flash output at full capacity is better here.
     config = types.GenerateContentConfig(
         temperature=0.7,
-        max_output_tokens=8192,
-        thinking_config=thinking,
+        max_output_tokens=16384,
     )
 
-    def _call(cfg: types.GenerateContentConfig | None) -> types.GenerateContentResponse:
+    def _call(cfg: types.GenerateContentConfig) -> types.GenerateContentResponse:
         return client.models.generate_content(
             model=model,
             contents=[user_content],
             config=cfg,
         )
 
-    try:
-        response = _call(config)
-    except Exception:
-        # Fallback: model may not support thinking_config
-        response = _call(
-            types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=8192,
-            ),
-        )
+    response = _call(config)
 
     text = _text_from_response(response)
     if not text:
@@ -123,6 +112,6 @@ def generate_skill_research_dossier(
 
     meta: dict = {
         "model": model,
-        "thinking": True,
+        "thinking": False,
     }
     return text, meta

@@ -14,6 +14,9 @@ export type GoogleIntegrationStatus = {
   grantedScopes: string[]
   photosAppendOnlyGranted: boolean
   photosAppReadGranted: boolean
+  driveFileGranted: boolean
+  calendarEventsGranted: boolean
+  documentsGranted: boolean
 }
 
 export type AuthMeResponse =

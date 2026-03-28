@@ -42,6 +42,65 @@ Rules:
 """
 
 
+def _extract_key_sections(dossier: str, max_chars: int = 8000) -> str:
+    """
+    Extract sections 3-6 (skill decomposition, milestones, practice, mistakes)
+    from a markdown research dossier.
+
+    These sections contain actionable coaching information, unlike the overview
+    which is too high-level for checkpoint design.
+
+    Falls back to quarter-in character slice if section detection fails.
+    """
+    if not dossier or len(dossier) < 1000:
+        return dossier
+
+    lines = dossier.split('\n')
+    extracted_lines = []
+    total_chars = 0
+    capturing = False
+
+    # Track which sections we've seen
+    seen_sections = set()
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Detect section headers (### or ##)
+        if stripped.startswith('###') or stripped.startswith('##'):
+            section_lower = stripped.lower()
+
+            # Start capturing at skill decomposition or milestones
+            if any(keyword in section_lower for keyword in ['decomposition', 'milestone', 'skill breakdown', 'sub-skill']):
+                capturing = True
+                seen_sections.add('decomposition')
+            elif any(keyword in section_lower for keyword in ['practice', 'drill', 'exercise', 'training']):
+                capturing = True
+                seen_sections.add('practice')
+            elif any(keyword in section_lower for keyword in ['mistake', 'pitfall', 'error', 'common issue']):
+                capturing = True
+                seen_sections.add('mistakes')
+            # Stop before resources/references/safety sections
+            elif any(keyword in section_lower for keyword in ['resource', 'reference', 'further reading', 'safety', 'ethic']):
+                if seen_sections:  # Only stop if we've captured something
+                    break
+
+        if capturing:
+            extracted_lines.append(line)
+            total_chars += len(line) + 1
+            if total_chars >= max_chars:
+                break
+
+    result = '\n'.join(extracted_lines).strip()
+
+    # Fallback: if extraction failed or too short, use quarter-in slice
+    if not result or len(result) < 500:
+        quarter = max(0, len(dossier) // 4)
+        return dossier[quarter: quarter + max_chars]
+
+    return result
+
+
 def _lesson_plan_prompt(
     *,
     title: str,
@@ -51,7 +110,10 @@ def _lesson_plan_prompt(
     dossier: str,
 ) -> str:
     cat = (category or "").strip() or "general"
-    dossier_excerpt = dossier[:3000] if dossier else ""
+    # Extract key sections (decomposition, milestones, practice, mistakes) rather than
+    # arbitrary character slices. This preserves section boundaries and captures the most
+    # actionable coaching information.
+    dossier_excerpt = _extract_key_sections(dossier, max_chars=8000) if dossier else ""
     return f"""You are an expert instructional designer. Create a structured coaching lesson plan for a live coaching session.
 
 ## Skill context

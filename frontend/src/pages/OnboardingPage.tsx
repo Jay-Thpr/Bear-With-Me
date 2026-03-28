@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { createSkillWithResearch } from '../api/skills'
+import { createSkillWithResearchStream } from '../api/skills'
 import { useAuth } from '../auth/AuthContext'
 import './Page.css'
 
 const levels = ['Beginner', 'Intermediate', 'Advanced'] as const
+
+const PHASE_LABELS: Record<string, string> = {
+  research: 'Generating research dossier',
+  lesson_plan: 'Building lesson plan',
+  saving: 'Saving to your account',
+}
 
 export function OnboardingPage() {
   const location = useLocation()
@@ -21,6 +27,9 @@ export function OnboardingPage() {
   const [level, setLevel] = useState<(typeof levels)[number]>('Beginner')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [phase, setPhase] = useState<string | null>(null)
+  const [phaseMessage, setPhaseMessage] = useState('')
+  const [pct, setPct] = useState(0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,26 +39,43 @@ export function OnboardingPage() {
       return
     }
     setSubmitting(true)
+    setPhase('research')
+    setPct(5)
+    setPhaseMessage('Starting…')
+
     try {
-      const res = await createSkillWithResearch({
+      for await (const event of createSkillWithResearchStream({
         title: skill.trim(),
         goal: goal.trim(),
         level,
         category: categoryPreset ?? null,
-      })
-      navigate('/dashboard', {
-        state: { skillTitle: res.skill.title.trim(), skillId: res.skill.id },
-      })
+      })) {
+        if (event.type === 'status') {
+          setPhase(event.phase)
+          setPhaseMessage(event.message)
+          setPct(event.pct)
+        } else if (event.type === 'done') {
+          navigate('/dashboard', {
+            state: { skillTitle: event.skill.title.trim(), skillId: event.skill.id },
+          })
+          return
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
+      setPhase(null)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const phaseLabel = phase ? (PHASE_LABELS[phase] ?? phaseMessage) : null
+
   return (
     <div className="page page--onboarding">
-      <form className="form-card" onSubmit={handleSubmit}>
+      <form className="form-card" onSubmit={(e) => void handleSubmit(e)}>
         <div className="text-center" style={{ marginBottom: '0.25rem' }}>
           <h1 className="page__title page__title--sm" style={{ marginBottom: '0.35rem' }}>
             {fromPickMore ? 'Create your skill' : 'Set your quest'}
@@ -69,6 +95,7 @@ export function OnboardingPage() {
             placeholder="e.g. Guitar, Python, Basketball"
             required
             minLength={1}
+            disabled={submitting}
           />
         </label>
         <label className="field">
@@ -80,6 +107,7 @@ export function OnboardingPage() {
             rows={3}
             required
             minLength={1}
+            disabled={submitting}
           />
         </label>
         <fieldset className="field">
@@ -91,6 +119,7 @@ export function OnboardingPage() {
                 type="button"
                 className={`chip ${level === l ? 'chip--active' : ''}`}
                 onClick={() => setLevel(l)}
+                disabled={submitting}
               >
                 {l}
               </button>
@@ -102,6 +131,25 @@ export function OnboardingPage() {
             Focus area: <strong>{categoryPreset}</strong>
           </p>
         ) : null}
+
+        {submitting && phase ? (
+          <div className="research-progress">
+            <div className="research-progress__header">
+              <span className="research-progress__label">
+                {phaseLabel ?? phaseMessage}
+              </span>
+              <span className="research-progress__pct">{pct}%</span>
+            </div>
+            <div className="research-progress__track">
+              <div
+                className="research-progress__fill"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="research-progress__sub">{phaseMessage}</p>
+          </div>
+        ) : null}
+
         {error ? (
           <p className="page__lead" style={{ margin: 0, color: 'var(--destructive)' }}>
             {error}
@@ -118,7 +166,7 @@ export function OnboardingPage() {
             className="btn btn--primary"
             disabled={submitting || authLoading || !user}
           >
-            {submitting ? 'Researching & saving…' : 'Generate research & save skill'}
+            {submitting ? 'Working…' : 'Generate research & save skill'}
           </button>
           <Link to="/dashboard" className="btn btn--ghost">
             Skip to board

@@ -30,8 +30,15 @@ SCOPES = " ".join(
         "openid",
         "email",
         "profile",
+        # Photos — annotation stills upload
         "https://www.googleapis.com/auth/photoslibrary.appendonly",
         "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata",
+        # Drive (app-scoped) — session summary exports, resource attachments
+        "https://www.googleapis.com/auth/drive.file",
+        # Calendar — session reminders and scheduled practice slots
+        "https://www.googleapis.com/auth/calendar.events",
+        # Docs — user-owned summary documents (replaces service account export)
+        "https://www.googleapis.com/auth/documents",
     ],
 )
 

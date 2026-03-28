@@ -81,6 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       grantedScopes: [],
       photosAppendOnlyGranted: false,
       photosAppReadGranted: false,
+      driveFileGranted: false,
+      calendarEventsGranted: false,
+      documentsGranted: false,
     })
   }, [])
 

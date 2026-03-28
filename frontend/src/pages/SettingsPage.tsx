@@ -6,6 +6,9 @@ import './Page.css'
 
 const PHOTOS_APPEND_SCOPE = 'https://www.googleapis.com/auth/photoslibrary.appendonly'
 const PHOTOS_READ_SCOPE = 'https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata'
+const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+const DOCUMENTS_SCOPE = 'https://www.googleapis.com/auth/documents'
 
 export function SettingsPage() {
   const { user, googleIntegration, loading, disconnectGoogle } = useAuth()
@@ -57,6 +60,18 @@ export function SettingsPage() {
   const photosAccess = integration
     ? integration.photosAppendOnlyGranted || integration.photosAppReadGranted
     : false
+  const driveAccess = integration?.driveFileGranted ?? false
+  const calendarAccess = integration?.calendarEventsGranted ?? false
+  const docsAccess = integration?.documentsGranted ?? false
+
+  // Detect missing scopes that are now required
+  const missingScopes: string[] = []
+  if (integration?.connected) {
+    if (!driveAccess) missingScopes.push('Drive')
+    if (!calendarAccess) missingScopes.push('Calendar')
+    if (!docsAccess) missingScopes.push('Docs')
+  }
+  const hasUpgradeAvailable = missingScopes.length > 0
 
   return (
     <div className="page settings">
@@ -78,6 +93,23 @@ export function SettingsPage() {
       {disconnectError ? (
         <p className="settings__notice settings__notice--error">{disconnectError}</p>
       ) : null}
+
+      {hasUpgradeAvailable && (
+        <div className="settings__notice settings__notice--info" style={{ marginBottom: '1.5rem' }}>
+          <strong style={{ display: 'block', marginBottom: '0.4rem' }}>🎉 New features available!</strong>
+          <p style={{ margin: '0 0 0.75rem' }}>
+            Reconnect your Google account to enable {missingScopes.join(', ')} integration for enhanced features:
+          </p>
+          <ul style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem' }}>
+            {!driveAccess && <li>Save session summaries and resources to your Drive</li>}
+            {!calendarAccess && <li>Schedule practice sessions and reminders in Calendar</li>}
+            {!docsAccess && <li>Export structured coaching notes to Google Docs</li>}
+          </ul>
+          <a className="btn btn--primary" href={googleLoginHref()} style={{ marginTop: '0.5rem' }}>
+            Reconnect to enable all features
+          </a>
+        </div>
+      )}
 
       <section className="settings__grid">
         <article className="settings-card">
@@ -113,6 +145,18 @@ export function SettingsPage() {
               <strong>{photosAccess ? 'Enabled' : 'Disabled'}</strong>
             </div>
             <div className="settings-card__row">
+              <span>Drive access</span>
+              <strong>{driveAccess ? 'Enabled' : 'Disabled'}</strong>
+            </div>
+            <div className="settings-card__row">
+              <span>Calendar access</span>
+              <strong>{calendarAccess ? 'Enabled' : 'Disabled'}</strong>
+            </div>
+            <div className="settings-card__row">
+              <span>Docs access</span>
+              <strong>{docsAccess ? 'Enabled' : 'Disabled'}</strong>
+            </div>
+            <div className="settings-card__row">
               <span>Configured in backend</span>
               <strong>
                 {googleOAuthConfigured === null
@@ -132,7 +176,13 @@ export function SettingsPage() {
                     ? 'Photos append-only'
                     : scope === PHOTOS_READ_SCOPE
                       ? 'Photos read-app-created'
-                      : scope}
+                      : scope === DRIVE_FILE_SCOPE
+                        ? 'Drive (app files)'
+                        : scope === CALENDAR_EVENTS_SCOPE
+                          ? 'Calendar events'
+                          : scope === DOCUMENTS_SCOPE
+                            ? 'Google Docs'
+                            : scope}
                 </span>
               ))
             ) : (
