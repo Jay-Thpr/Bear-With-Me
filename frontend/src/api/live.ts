@@ -15,7 +15,6 @@ export async function fetchLiveEphemeralToken(
 ): Promise<LiveEphemeralTokenResponse> {
   const res = await fetch(`${apiBase}/api/live/ephemeral-token`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(skillId ? { skill_id: skillId } : {}),
   })

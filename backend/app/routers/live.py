@@ -4,8 +4,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.database import get_session
-from app.deps import get_optional_user
-from app.routers.skills import _get_skill_owned
+from app.routers.skills import _get_skill
 from app.services.live_context import (
     LIVE_CONTEXT_VERSION,
     build_generic_system_instruction,
@@ -33,7 +32,6 @@ def live_status() -> dict[str, str | bool]:
 @router.post("/ephemeral-token")
 def issue_ephemeral_token(
     body: LiveEphemeralRequest | None = None,
-    user: dict | None = Depends(get_optional_user),
     session: Session = Depends(get_session),
 ) -> dict[str, str | bool | list[str] | None]:
     """
@@ -55,9 +53,7 @@ def issue_ephemeral_token(
 
     skill_id = body.skill_id if body else None
     if skill_id:
-        if user is None:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        skill = _get_skill_owned(session, skill_id, str(user["id"]))
+        skill = _get_skill(session, skill_id)
         live_ctx = build_live_system_instruction_response(session=session, skill=skill)
         system_instruction = live_ctx.system_instruction
         source_research_id = live_ctx.source_research_id

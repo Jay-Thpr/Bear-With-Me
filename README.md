@@ -1,6 +1,6 @@
 # Skill Quest (AI Skill Learner)
 
-Hackathon scaffold: **FastAPI** backend + **Vite React** web app for an AI coaching flow (research → live session → summaries). The UI is a game-style shell with **Google sign-in** (OAuth + session cookie) and Gemini Live wiring.
+Hackathon mode: **FastAPI** backend + **Vite React** web app for an AI coaching flow (research → live session → summaries). **No sign-in** — skills, research, and progress live in a **shared pool** in the database (everyone sees and updates the same catalog). Gemini Live wiring is unchanged.
 
 ## Prerequisites
 
@@ -61,6 +61,8 @@ npm run preview   # optional: serve dist locally
 
 If the app is not served from Vite’s dev server, set `VITE_API_URL` to your API base (see [.env.example](.env.example)) so the browser can reach FastAPI directly.
 
+**Render (or any static host):** For client-side routes (e.g. `/dashboard`, `/onboarding`), add a **Rewrite**: Source `/*`, Destination `/index.html` in the static site’s **Redirects / Rewrites** so deep links load the SPA ([Render docs](https://render.com/docs/redirects-rewrites)).
+
 ## Configuration
 
 | Variable            | Where           | Purpose                                                                 |
@@ -71,24 +73,19 @@ If the app is not served from Vite’s dev server, set `VITE_API_URL` to your AP
 | `GEMINI_IMAGE_MODEL` | `backend/.env` | Image model for annotated stills (`POST /api/annotations/form-correction`; default: `gemini-3.1-flash-image-preview`) |
 | `GEMINI_RESEARCH_MODEL` | `backend/.env` | Text model for skill research dossiers (`POST /api/skills/create-with-research`; default: `gemini-3-flash-preview`; override from `scripts/check_gemini_key.py`) |
 | `VITE_API_URL`      | `frontend/.env` | Optional; leave empty in dev to use Vite’s `/api` proxy                 |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | `backend/.env` | OAuth 2.0 Web client from [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
-| `GOOGLE_REDIRECT_URI` | `backend/.env` | Must match an **Authorized redirect URI** on the client (default: `http://localhost:5173/auth/callback`) |
-| `JWT_SECRET`        | `backend/.env` | Secret for signing session cookies (set a long random value in production) |
-| `COOKIE_SECURE`     | `backend/.env` | `true` when the API is served over HTTPS so cookies get the `Secure` flag |
-| `DATABASE_URL`      | `backend/.env` | Optional; default is SQLite at `backend/data/app.db` (skills, research, progress) |
+| `DATABASE_URL`      | `backend/.env` | Optional; default is SQLite at `backend/data/app.db` (shared skills, research, progress) |
 
-Full list of placeholders (Google, Gemini, Nano Banana): [.env.example](.env.example).
+Full list of placeholders (Gemini, optional Google legacy, etc.): [.env.example](.env.example).
 
-### Google sign-in
+### Shared skill pool
 
-1. In Google Cloud Console, create an **OAuth 2.0 Client ID** of type **Web application**.
-2. Under **Authorized redirect URIs**, add exactly: `http://localhost:5173/auth/callback` (add your production URL when you deploy).
-3. Put the client ID and secret in `backend/.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and set `GOOGLE_REDIRECT_URI` to the same URI you registered.
-4. Restart the API and open the app; use **Sign in with Google** in the header. The app completes the callback at `/auth/callback` and stores an HTTP-only session cookie (`sk_session`).
+New rows use `user_sub = __shared__` in the DB. **`GET /api/skills` lists every skill** (all `user_sub` values) so older rows from per-user auth still appear. **Anyone can read, create, update, or delete any skill by id** — suitable for a public demo, not for private data.
 
-### Skill persistence (SQLite)
+**Progression is unchanged:** ending a live session still calls `POST /api/skills/{id}/complete-session`, which updates **`stats_level`**, **`stats_progress_percent`** (level-ups when progress crosses 100%), **`stats_sessions`**, **`stats_practice_seconds`**, **`stats_day_streak`**, **`stats_mastered`**, and **`last_practice_at`**, and appends a **`skill_progress_event`** row (`kind: session`) plus a **`skill_session_summary`**. All of that is **`session.commit()`’d** to whatever **`DATABASE_URL`** you use (SQLite locally, Postgres/Supabase in production), so data accumulates over time the same as before—only the login gate was removed.
 
-The API stores **skills**, **research notes** (versioned per skill), and a **progress timeline** in a local SQLite file (`backend/data/app.db` by default). Tables are created on startup. All routes below require an authenticated session (same `sk_session` cookie as Google sign-in).
+### Skill persistence (SQLite / Postgres)
+
+The API stores **skills**, **research notes** (versioned per skill), and a **progress timeline**. Tables are created on startup. **No session cookies**; CORS uses `allow_credentials=False`.
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
@@ -100,7 +97,7 @@ The API stores **skills**, **research notes** (versioned per skill), and a **pro
 | `POST` | `/api/skills/create-with-research` | `title`, `goal`, `level`, optional `category` — Gemini research dossier (`GEMINI_RESEARCH_MODEL`), then save skill + research |
 | `GET` | `/api/sessions` | Recent events with `kind === "session"` across all skills (convention for coaching runs) |
 
-Use [http://127.0.0.1:3000/docs](http://127.0.0.1:3000/docs) to try authenticated calls (use **Authorize** with a session cookie, or sign in via the browser and copy the cookie into Swagger).
+Use [http://127.0.0.1:3000/docs](http://127.0.0.1:3000/docs) to try the API without auth.
 
 ### List models for your API key
 
@@ -113,13 +110,13 @@ python3 scripts/check_gemini_key.py --gemini-only
 
 Each line shows the model id to use in config (no `models/` prefix) and `supportedGenerationMethods` (look for Live / bidirectional entries when picking `GEMINI_LIVE_MODEL`).
 
-**Security:** The browser never sees the long-lived API key. The frontend calls `POST /api/live/ephemeral-token`, receives a short-lived token, and opens the Live WebSocket with `access_token=` ([ephemeral tokens](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)). For production, protect that endpoint with your own auth.
+**Security:** The browser never sees the long-lived API key. The frontend calls `POST /api/live/ephemeral-token`, receives a short-lived token, and opens the Live WebSocket with `access_token=` ([ephemeral tokens](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)). In hackathon mode this endpoint is also public — anyone who can reach your API can request ephemeral tokens (mitigate with network rules or a gateway if needed).
 
 ## Project layout
 
 | Path                             | Role                                                                                        |
 | -------------------------------- | ------------------------------------------------------------------------------------------- |
-| [backend/](backend/)             | FastAPI app, routers under `app/routers/` (auth, skills, sessions, research, live) |
+| [backend/](backend/)             | FastAPI app, routers under `app/routers/` (skills, sessions, research, live, minimal `/api/auth` stubs) |
 | [frontend/](frontend/)           | React routes + Gemini Live (mic/video, tool `request_form_correction`) + manual capture for annotated stills |
 | [.cursor/plans/](.cursor/plans/) | Product / implementation plan                                                               |
 

@@ -3,7 +3,6 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.db_models import SkillProgressEvent
-from app.deps import require_user
 from app.schemas.skills import ProgressOut
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -14,16 +13,13 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict, include_in_schema=False)
 def list_session_events(
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    """Recent practice/coaching session events across all skills (see POST .../progress with kind=session)."""
-    user_sub = str(user["id"])
+    """Recent practice/coaching session events across all skills (shared pool)."""
     stmt = (
         select(SkillProgressEvent)
-        .where(SkillProgressEvent.user_sub == user_sub)
         .where(SkillProgressEvent.kind == "session")
         .order_by(SkillProgressEvent.created_at.desc())
         .offset(offset)

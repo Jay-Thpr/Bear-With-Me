@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { createSkillWithResearch } from '../api/skills'
-import { useAuth } from '../auth/AuthContext'
 import './Page.css'
 
 const levels = ['Beginner', 'Intermediate', 'Advanced'] as const
@@ -9,7 +8,6 @@ const levels = ['Beginner', 'Intermediate', 'Advanced'] as const
 export function OnboardingPage() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, loading: authLoading } = useAuth()
   const fromPickMore = Boolean(
     (location.state as { createSkill?: boolean } | null)?.createSkill,
   )
@@ -25,10 +23,6 @@ export function OnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!user) {
-      setError('Sign in with Google first (header), then try again.')
-      return
-    }
     setSubmitting(true)
     try {
       const res = await createSkillWithResearch({
@@ -56,8 +50,8 @@ export function OnboardingPage() {
           </h1>
           <p className="page__lead" style={{ margin: '0 auto', maxWidth: '28rem' }}>
             {fromPickMore
-              ? 'Name your skill and what you want to achieve. We generate a research dossier with Gemini and save it to your account.'
-              : 'Tell us what you are building toward. We generate a research dossier with Gemini and save it to your account.'}
+              ? 'Name your skill and what you want to achieve. We generate a research dossier with Gemini and add it to the shared skill pool.'
+              : 'Tell us what you are building toward. We generate a research dossier with Gemini and add it to the shared skill pool.'}
           </p>
         </div>
         <label className="field">
@@ -107,16 +101,11 @@ export function OnboardingPage() {
             {error}
           </p>
         ) : null}
-        {!authLoading && !user ? (
-          <p className="page__lead" style={{ margin: 0 }}>
-            Sign in with Google using the header button to create a skill.
-          </p>
-        ) : null}
         <div className="page__actions">
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={submitting || authLoading || !user}
+            disabled={submitting}
           >
             {submitting ? 'Researching & saving…' : 'Generate research & save skill'}
           </button>

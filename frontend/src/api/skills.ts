@@ -85,10 +85,7 @@ export type LiveCoachContext = {
 }
 
 export async function fetchSkills(): Promise<SkillOut[]> {
-  const res = await fetch(`${apiBase}/api/skills`, { credentials: 'include' })
-  if (res.status === 401) {
-    throw new Error('Sign in to load skills.')
-  }
+  const res = await fetch(`${apiBase}/api/skills`)
   if (!res.ok) {
     throw new Error(`Failed to load skills: ${res.status}`)
   }
@@ -97,12 +94,7 @@ export async function fetchSkills(): Promise<SkillOut[]> {
 }
 
 export async function fetchSkill(skillId: string): Promise<SkillOut> {
-  const res = await fetch(`${apiBase}/api/skills/${encodeURIComponent(skillId)}`, {
-    credentials: 'include',
-  })
-  if (res.status === 401) {
-    throw new Error('Sign in to load this skill.')
-  }
+  const res = await fetch(`${apiBase}/api/skills/${encodeURIComponent(skillId)}`)
   if (!res.ok) {
     throw new Error(`Failed to load skill: ${res.status}`)
   }
@@ -112,11 +104,7 @@ export async function fetchSkill(skillId: string): Promise<SkillOut> {
 export async function fetchLiveCoachContext(skillId: string): Promise<LiveCoachContext> {
   const res = await fetch(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/live-coach-context`,
-    { credentials: 'include' },
   )
-  if (res.status === 401) {
-    throw new Error('Sign in to load coach context.')
-  }
   if (!res.ok) {
     throw new Error(`Failed to load coach context: ${res.status}`)
   }
@@ -138,7 +126,6 @@ export async function createSkillWithResearch(
 ): Promise<SkillWithResearchResponse> {
   const res = await fetch(`${apiBase}/api/skills/create-with-research`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
@@ -157,7 +144,6 @@ export async function completeSession(
     `${apiBase}/api/skills/${encodeURIComponent(skillId)}/complete-session`,
     {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     },

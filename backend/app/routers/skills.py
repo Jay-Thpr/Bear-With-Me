@@ -4,9 +4,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
+from app.constants import SHARED_POOL_USER_SUB
 from app.database import get_session
 from app.db_models import Skill, SkillProgressEvent, SkillResearch, SkillSessionSummary
-from app.deps import require_user
 from app.schemas.skills import (
     LiveCoachContextOut,
     LiveSystemInstructionOut,
@@ -36,13 +36,9 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _get_skill_owned(
-    session: Session,
-    skill_id: str,
-    user_sub: str,
-) -> Skill:
+def _get_skill(session: Session, skill_id: str) -> Skill:
     skill = session.get(Skill, skill_id)
-    if skill is None or skill.user_sub != user_sub:
+    if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill
 
@@ -99,15 +95,12 @@ def _summary_out(summary: SkillSessionSummary) -> SkillSessionSummaryOut:
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict, include_in_schema=False)
 def list_skills(
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    user_sub = str(user["id"])
     stmt = (
         select(Skill)
-        .where(Skill.user_sub == user_sub)
         .order_by(Skill.updated_at.desc())
         .offset(offset)
         .limit(limit)
@@ -120,13 +113,11 @@ def list_skills(
 @router.post("/", response_model=SkillOut, include_in_schema=False)
 def create_skill(
     body: SkillCreate,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> SkillOut:
-    user_sub = str(user["id"])
     now = _utcnow()
     skill = Skill(
-        user_sub=user_sub,
+        user_sub=SHARED_POOL_USER_SUB,
         title=body.title.strip(),
         notes=body.notes.strip() if body.notes else None,
         created_at=now,
@@ -141,14 +132,13 @@ def create_skill(
 @router.post("/create-with-research", response_model=SkillWithResearchResponse)
 def create_skill_with_research(
     body: SkillCreateWithResearch,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> SkillWithResearchResponse:
     """
     Run Gemini research (thinking-enabled when the model supports it), then persist
     the skill, research row, and a milestone progress event.
     """
-    user_sub = str(user["id"])
+    user_sub = SHARED_POOL_USER_SUB
     try:
         dossier, meta = generate_skill_research_dossier(
             title=body.title,
@@ -222,15 +212,14 @@ def create_skill_with_research(
 def complete_session(
     skill_id: str,
     body: SessionCompleteBody,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> SessionCompleteResponse:
     """
     Record a finished practice: add session count + duration, ask Gemini for progress
     delta toward the next level, update streak, persist milestone progress.
     """
-    user_sub = str(user["id"])
-    skill = _get_skill_owned(session, skill_id, user_sub)
+    user_sub = SHARED_POOL_USER_SUB
+    skill = _get_skill(session, skill_id)
     ctx = skill.context if isinstance(skill.context, dict) else {}
     goal = str(ctx.get("goal", skill.notes or skill.title))[:2000]
     level_label = str(ctx.get("level", "Beginner"))[:64]
@@ -329,7 +318,7 @@ def complete_session(
         export_result = export_session_summary_to_docs(
             summary=summary,
             skill=skill,
-            user_email=user.get("email") if isinstance(user.get("email"), str) else None,
+            user_email=None,
         )
         if export_result:
             docs_export_url = export_result["document_url"]
@@ -372,15 +361,13 @@ _PROGRESS_EVENTS_FOR_LIVE = 25
 @router.get("/{skill_id}/live-coach-context", response_model=LiveCoachContextOut)
 def live_coach_context(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> LiveCoachContextOut:
     """
     Bundle SQLite-backed skill, latest research dossier, and recent progress events
     for the browser to build Gemini Live system instructions.
     """
-    user_sub = str(user["id"])
-    skill = _get_skill_owned(session, skill_id, user_sub)
+    skill = _get_skill(session, skill_id)
 
     r_stmt = (
         select(SkillResearch)
@@ -436,23 +423,19 @@ def live_coach_context(
 @router.get("/{skill_id}/live-system-instruction", response_model=LiveSystemInstructionOut)
 def live_system_instruction(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> LiveSystemInstructionOut:
     """Transitional debug route for the backend-owned Live prompt."""
-    user_sub = str(user["id"])
-    skill = _get_skill_owned(session, skill_id, user_sub)
+    skill = _get_skill(session, skill_id)
     return build_live_system_instruction_response(session=session, skill=skill)
 
 
 @router.get("/{skill_id}", response_model=SkillOut)
 def get_skill(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> SkillOut:
-    user_sub = str(user["id"])
-    s = _get_skill_owned(session, skill_id, user_sub)
+    s = _get_skill(session, skill_id)
     return _skill_out(s)
 
 
@@ -460,11 +443,9 @@ def get_skill(
 def update_skill(
     skill_id: str,
     body: SkillUpdate,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> SkillOut:
-    user_sub = str(user["id"])
-    s = _get_skill_owned(session, skill_id, user_sub)
+    s = _get_skill(session, skill_id)
     if body.title is not None:
         s.title = body.title.strip()
     if body.notes is not None:
@@ -479,17 +460,19 @@ def update_skill(
 @router.delete("/{skill_id}")
 def delete_skill(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict[str, bool]:
-    user_sub = str(user["id"])
-    s = _get_skill_owned(session, skill_id, user_sub)
+    s = _get_skill(session, skill_id)
     for row in session.exec(
         select(SkillResearch).where(SkillResearch.skill_id == skill_id),
     ).all():
         session.delete(row)
     for row in session.exec(
         select(SkillProgressEvent).where(SkillProgressEvent.skill_id == skill_id),
+    ).all():
+        session.delete(row)
+    for row in session.exec(
+        select(SkillSessionSummary).where(SkillSessionSummary.skill_id == skill_id),
     ).all():
         session.delete(row)
     session.delete(s)
@@ -503,13 +486,11 @@ def delete_skill(
 @router.get("/{skill_id}/research", response_model=dict)
 def list_research(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    user_sub = str(user["id"])
-    _get_skill_owned(session, skill_id, user_sub)
+    _get_skill(session, skill_id)
     stmt = (
         select(SkillResearch)
         .where(SkillResearch.skill_id == skill_id)
@@ -536,11 +517,9 @@ def list_research(
 @router.get("/{skill_id}/research/latest", response_model=ResearchOut)
 def latest_research(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> ResearchOut:
-    user_sub = str(user["id"])
-    _get_skill_owned(session, skill_id, user_sub)
+    _get_skill(session, skill_id)
     stmt = (
         select(SkillResearch)
         .where(SkillResearch.skill_id == skill_id)
@@ -567,14 +546,12 @@ def latest_research(
 def add_research(
     skill_id: str,
     body: ResearchCreate,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> ResearchOut:
-    user_sub = str(user["id"])
-    s = _get_skill_owned(session, skill_id, user_sub)
+    s = _get_skill(session, skill_id)
     row = SkillResearch(
         skill_id=s.id,
-        user_sub=user_sub,
+        user_sub=SHARED_POOL_USER_SUB,
         title=body.title.strip() if body.title else None,
         content=body.content,
         extra=body.extra,
@@ -600,13 +577,11 @@ def add_research(
 @router.get("/{skill_id}/progress", response_model=dict)
 def list_progress(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    user_sub = str(user["id"])
-    _get_skill_owned(session, skill_id, user_sub)
+    _get_skill(session, skill_id)
     stmt = (
         select(SkillProgressEvent)
         .where(SkillProgressEvent.skill_id == skill_id)
@@ -635,14 +610,12 @@ def list_progress(
 def add_progress(
     skill_id: str,
     body: ProgressCreate,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> ProgressOut:
-    user_sub = str(user["id"])
-    s = _get_skill_owned(session, skill_id, user_sub)
+    s = _get_skill(session, skill_id)
     ev = SkillProgressEvent(
         skill_id=s.id,
-        user_sub=user_sub,
+        user_sub=SHARED_POOL_USER_SUB,
         kind=body.kind.strip(),
         label=body.label.strip() if body.label else None,
         detail=body.detail,
@@ -667,13 +640,11 @@ def add_progress(
 @router.get("/{skill_id}/session-summaries", response_model=dict)
 def list_session_summaries(
     skill_id: str,
-    user: dict = Depends(require_user),
     session: Session = Depends(get_session),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    user_sub = str(user["id"])
-    _get_skill_owned(session, skill_id, user_sub)
+    _get_skill(session, skill_id)
     rows = session.exec(
         select(SkillSessionSummary)
         .where(SkillSessionSummary.skill_id == skill_id)

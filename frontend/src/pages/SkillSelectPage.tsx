@@ -1,9 +1,8 @@
-import { startTransition, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DndProvider, useDrag, useDrop } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchSkills, type SkillOut } from '../api/skills'
-import { useAuth } from '../auth/AuthContext'
 import {
   Camera,
   ChefHat,
@@ -351,7 +350,6 @@ function ArenaHoverClear({ onClear }: { onClear: () => void }) {
 
 export function SkillSelectPage() {
   const navigate = useNavigate()
-  const { user, loading: authLoading } = useAuth()
   const [isDragging, setIsDragging] = useState(false)
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
@@ -362,11 +360,6 @@ export function SkillSelectPage() {
   const [skillsLoadError, setSkillsLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (authLoading) return
-    if (!user) {
-      startTransition(() => setApiSkills([]))
-      return
-    }
     let cancelled = false
     fetchSkills()
       .then((list) => {
@@ -383,7 +376,7 @@ export function SkillSelectPage() {
     return () => {
       cancelled = true
     }
-  }, [user, authLoading])
+  }, [])
 
   const userSlots: SkillSlot[] = useMemo(() => {
     const withoutPresetDuplicates = apiSkills.filter((s) => {
@@ -461,20 +454,18 @@ export function SkillSelectPage() {
           })
           return
         }
-        if (user) {
-          const resolved = await resolvePresetSkill(slot.type, apiSkills)
-          if (resolved) {
-            void fetchSkills()
-              .then(setApiSkills)
-              .catch(() => {})
-            navigate('/dashboard', {
-              state: {
-                skillId: resolved.id,
-                skillTitle: resolved.title,
-              },
-            })
-            return
-          }
+        const resolved = await resolvePresetSkill(slot.type, apiSkills)
+        if (resolved) {
+          void fetchSkills()
+            .then(setApiSkills)
+            .catch(() => {})
+          navigate('/dashboard', {
+            state: {
+              skillId: resolved.id,
+              skillTitle: resolved.title,
+            },
+          })
+          return
         }
         navigate('/onboarding', {
           state: { createSkill: true, category: slot.type },
@@ -507,20 +498,18 @@ export function SkillSelectPage() {
           })
           return
         }
-        if (user) {
-          const resolved = await resolvePresetSkill(slot.type, apiSkills)
-          if (resolved) {
-            void fetchSkills()
-              .then(setApiSkills)
-              .catch(() => {})
-            navigate('/dashboard', {
-              state: {
-                skillId: resolved.id,
-                skillTitle: resolved.title,
-              },
-            })
-            return
-          }
+        const resolved = await resolvePresetSkill(slot.type, apiSkills)
+        if (resolved) {
+          void fetchSkills()
+            .then(setApiSkills)
+            .catch(() => {})
+          navigate('/dashboard', {
+            state: {
+              skillId: resolved.id,
+              skillTitle: resolved.title,
+            },
+          })
+          return
         }
         navigate('/onboarding', {
           state: { createSkill: true, category: slot.type },
@@ -541,9 +530,7 @@ export function SkillSelectPage() {
           <p className="skill-select__subtitle">
             {selectedSkill
               ? 'Tap to confirm your choice'
-              : user
-                ? 'Your saved skills are on top; drag onto a focus area or create new'
-                : 'Sign in to load your skills — or drag onto a focus area to explore'}
+              : 'Shared skills on top; drag onto a focus area or create new'}
           </p>
           {skillsLoadError ? (
             <p className="skill-select__subtitle" style={{ color: 'var(--destructive)' }}>

@@ -1,6 +1,4 @@
 import { Link, Outlet } from 'react-router-dom'
-import { googleLoginHref } from '../api/auth'
-import { useAuth } from '../auth/AuthContext'
 import '../pages/Page.css'
 import './Layout.css'
 
@@ -11,8 +9,6 @@ const nav = [
 ]
 
 export function Layout() {
-  const { user, loading, logout } = useAuth()
-
   return (
     <div className="layout">
       <header className="layout__header">
@@ -34,37 +30,6 @@ export function Layout() {
               </Link>
             ))}
           </nav>
-          <div className="layout__auth" aria-label="Account">
-            {loading ? (
-              <span className="layout__auth-muted">…</span>
-            ) : user ? (
-              <>
-                {user.picture ? (
-                  <img
-                    className="layout__avatar"
-                    src={user.picture}
-                    alt=""
-                    width={32}
-                    height={32}
-                  />
-                ) : null}
-                <span className="layout__user-name" title={user.email ?? undefined}>
-                  {user.display_name}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn--ghost layout__auth-btn"
-                  onClick={() => void logout()}
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <a className="btn btn--ghost layout__auth-btn" href={googleLoginHref()}>
-                Sign in with Google
-              </a>
-            )}
-          </div>
         </div>
       </header>
       <main className="layout__main">
