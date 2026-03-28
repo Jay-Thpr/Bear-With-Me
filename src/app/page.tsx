@@ -47,8 +47,8 @@ export default function SkillSelectionPage() {
       }
 
       const data = await res.json();
-      if (data.docUrl) {
-        setDocUrl(data.docUrl);
+      if (data.success) {
+        setDocUrl(data.docUrl ?? null);
         setStatus("done");
       } else {
         setStatus("error");
@@ -88,6 +88,15 @@ export default function SkillSelectionPage() {
         {isResearching ? "Researching..." : "Start Research"}
       </button>
 
+      {status === "done" && (
+        <a
+          href={`/session?skill=${encodeURIComponent(skill)}`}
+          className="bg-green-600 hover:bg-green-500 text-white font-bold text-sm px-6 py-3 rounded-lg min-h-[44px] w-80 flex items-center justify-center transition-colors"
+        >
+          Start Coaching Session →
+        </a>
+      )}
+
       {/* Status panel — shown during researching, done, and error states */}
       {status !== "idle" && (
         <div
@@ -108,17 +117,19 @@ export default function SkillSelectionPage() {
             </>
           )}
 
-          {status === "done" && docUrl && (
-            <div className="flex flex-col gap-1">
+          {status === "done" && (
+            <div className="flex flex-col gap-2">
               <span className="text-sm font-bold text-zinc-400">Skill document ready</span>
-              <a
-                href={docUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 underline text-base hover:text-blue-300"
-              >
-                View in Google Docs
-              </a>
+              {docUrl && (
+                <a
+                  href={docUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 underline text-sm hover:text-blue-300"
+                >
+                  View in Google Docs
+                </a>
+              )}
             </div>
           )}
 

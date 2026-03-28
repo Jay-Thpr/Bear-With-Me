@@ -56,10 +56,15 @@ export async function POST(req: NextRequest) {
     console.log(`[research] Step 3: Synthesizing skill document`);
     const skillDoc = await synthesizeSkillDoc(skill, rawAnalysis);
 
-    // Step 4: Write to Google Docs
-    // TODO: Requires GOOGLE_SERVICE_ACCOUNT_KEY in .env.local — returns mock URL until then
+    // Step 4: Write to Google Docs (skipped gracefully if no credentials)
     console.log(`[research] Step 4: Writing to Google Docs`);
-    const docUrl = await createSkillDoc(`${skill} — Skill Model`, skillDoc);
+    let docUrl: string | null = null;
+    try {
+      docUrl = await createSkillDoc(`${skill} — Skill Model`, skillDoc);
+    } catch (err: any) {
+      if (err?.message !== "NO_CREDENTIALS") throw err;
+      console.log("[research] No Google credentials — skipping Docs write");
+    }
 
     console.log(`[research] Complete. Doc URL: ${docUrl}`);
     return NextResponse.json({ success: true, docUrl, skillDoc });

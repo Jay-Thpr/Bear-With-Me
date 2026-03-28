@@ -16,6 +16,11 @@ const DOCS_INSERT_CHUNK_SIZE = 10_000; // Stay under Docs API batchUpdate size l
  *   Set GOOGLE_DRIVE_FOLDER_ID=<folder-id> in .env.local to enable folder placement.
  */
 export async function createSkillDoc(title: string, content: string): Promise<string> {
+  // Skip Docs write if no credentials configured — return null signal
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH && !process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    throw new Error("NO_CREDENTIALS");
+  }
+
   const auth = getGoogleAuth();
   const docs = google.docs({ version: "v1", auth });
   const drive = google.drive({ version: "v3", auth });

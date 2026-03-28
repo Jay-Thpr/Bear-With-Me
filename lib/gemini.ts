@@ -21,6 +21,15 @@ function getAI() {
  * TODO: Implement real Gemini call here — returns mock data for now
  */
 export async function findTutorialUrls(skill: string): Promise<string[]> {
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("[gemini] No API key — returning mock URLs for", skill);
+    return [
+      "https://www.youtube.com/watch?v=mock1",
+      "https://www.youtube.com/watch?v=mock2",
+      "https://www.youtube.com/watch?v=mock3",
+    ];
+  }
+
   const ai = getAI();
 
   const response = await ai.models.generateContent({
@@ -60,6 +69,11 @@ export async function findTutorialUrls(skill: string): Promise<string[]> {
  * TODO: Implement real Gemini call here — returns mock data for now
  */
 export async function analyzeSkillVideos(skill: string, urls: string[]): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("[gemini] No API key — returning mock analysis for", skill);
+    return `Mock analysis for "${skill}": proper form requires focus on fundamentals, avoiding common mistakes, and progressive skill building.`;
+  }
+
   if (urls.length === 0) {
     throw new Error("No video URLs to analyze");
   }
@@ -92,6 +106,32 @@ export async function analyzeSkillVideos(skill: string, urls: string[]): Promise
  * TODO: Implement real Gemini call here — returns mock data for now
  */
 export async function synthesizeSkillDoc(skill: string, rawAnalysis: string): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("[gemini] No API key — returning mock skill doc for", skill);
+    return `SKILL: ${skill.toUpperCase()}
+
+PROPER FORM
+- Focus on fundamentals and body positioning
+- Maintain consistent technique throughout
+- Build muscle memory through deliberate repetition
+
+COMMON MISTAKES
+1. Rushing progression before fundamentals are solid
+2. Inconsistent practice schedule
+3. Ignoring feedback and self-correction
+
+PROGRESSION STEPS
+1. Learn basic stance and grip
+2. Practice core movement patterns slowly
+3. Increase speed and complexity gradually
+4. Apply in real scenarios with feedback
+
+KEY MOMENTS
+- Start each session reviewing form basics
+- Record yourself to catch mistakes you can't feel
+- Rest and recovery are part of skill building`;
+  }
+
   const ai = getAI();
 
   const response = await ai.models.generateContent({
