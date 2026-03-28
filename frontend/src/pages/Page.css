@@ -265,6 +265,71 @@
   place-items: center;
 }
 
+.session-placeholder__frame--camera {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.session-placeholder__frame--live {
+  border-style: solid;
+  border-color: var(--accent);
+  background: #000;
+}
+
+.session-camera {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 9px;
+  transform: scaleX(-1);
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Video stays muted so autoplay is allowed; audio track is still captured for later Live upload */
+.session-placeholder__frame--live .session-camera {
+  opacity: 1;
+}
+
+.session-camera__overlay {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.session-placeholder__frame--live .session-camera__overlay {
+  display: none;
+}
+
+.session-camera__overlay--error {
+  pointer-events: auto;
+  max-width: 90%;
+}
+
+.session-camera__error {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #fecaca;
+}
+
+.session-camera__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 .session-placeholder__label {
   font-family: var(--font-pixel);
   font-size: 0.5rem;
@@ -279,4 +344,45 @@
   border-radius: 12px;
   border: 3px solid var(--border-strong);
   background: var(--bg-elevated);
+}
+
+.session-live__security {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.session-live__security code {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+}
+
+.session-live__security a {
+  color: var(--accent-bright);
+}
+
+.session-live__captions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 10rem;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.session-live__caption {
+  margin: 0;
+  color: var(--text);
+}
+
+.session-live__caption-label {
+  display: block;
+  font-family: var(--font-pixel);
+  font-size: 0.45rem;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.06em;
 }

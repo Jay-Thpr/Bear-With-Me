@@ -63,20 +63,35 @@ If the app is not served from Vite’s dev server, set `VITE_API_URL` to your AP
 
 ## Configuration
 
-| Variable | Where | Purpose |
-|----------|--------|---------|
-| `CORS_ORIGINS` | `backend/.env` | Comma-separated allowed browser origins (default: `http://localhost:5173`) |
-| `VITE_API_URL` | `frontend/.env` | Optional; leave empty in dev to use Vite’s `/api` proxy |
+| Variable            | Where           | Purpose                                                                 |
+| ------------------- | --------------- | ----------------------------------------------------------------------- |
+| `CORS_ORIGINS`      | `backend/.env`  | Comma-separated allowed browser origins (default: `http://localhost:5173`) |
+| `GEMINI_API_KEY`    | `backend/.env`  | Server-only Gemini key; used to mint **ephemeral Live tokens** for the UI |
+| `GEMINI_LIVE_MODEL` | `backend/.env`  | Live model id (default: `gemini-3.1-flash-live-preview`; override from `scripts/check_gemini_key.py` if needed) |
+| `VITE_API_URL`      | `frontend/.env` | Optional; leave empty in dev to use Vite’s `/api` proxy                 |
 
 Full list of placeholders (Google, Gemini, Nano Banana): [.env.example](.env.example).
 
+### List models for your API key
+
+From the repo root (loads `backend/.env` then `.env`):
+
+```bash
+python3 scripts/check_gemini_key.py
+python3 scripts/check_gemini_key.py --gemini-only
+```
+
+Each line shows the model id to use in config (no `models/` prefix) and `supportedGenerationMethods` (look for Live / bidirectional entries when picking `GEMINI_LIVE_MODEL`).
+
+**Security:** The browser never sees the long-lived API key. The frontend calls `POST /api/live/ephemeral-token`, receives a short-lived token, and opens the Live WebSocket with `access_token=` ([ephemeral tokens](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)). For production, protect that endpoint with your own auth.
+
 ## Project layout
 
-| Path | Role |
-|------|------|
-| [backend/](backend/) | FastAPI app, routers under `app/routers/`, stubs for auth, skills, sessions, research, live |
-| [frontend/](frontend/) | React routes: home, onboarding, dashboard, live session placeholder |
-| [.cursor/plans/](.cursor/plans/) | Product / implementation plan |
+| Path                             | Role                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| [backend/](backend/)             | FastAPI app, routers under `app/routers/`, stubs for auth, skills, sessions, research, live |
+| [frontend/](frontend/)           | React routes + Gemini Live WebSocket (mic/video in, audio out) on the session page            |
+| [.cursor/plans/](.cursor/plans/) | Product / implementation plan                                                               |
 
 ## License
 
