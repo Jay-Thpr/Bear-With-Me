@@ -54,11 +54,11 @@ Exceptions:
 |------|------|--------|-------------|-------|
 | Display | 32px (text-3xl) | 700 (font-bold) | 1.2 | Page heading "What do you want to learn?" |
 | Body | 16px (text-base) | 400 (font-normal) | 1.5 | Input placeholder, status copy, link text |
-| Label | 14px (text-sm) | 600 (font-semibold) | 1.4 | Button label, error message, step indicator |
+| Label | 14px (text-sm) | 700 (font-bold) | 1.4 | Button label, error message, step indicator |
 
 **Font:** Inter loaded via `next/font/google`. Falls back to `ui-sans-serif, system-ui, sans-serif`.
 
-**Constraint:** Phase 1 is a single full-screen centered page. Only 3 type roles are needed — Display for the heading, Body for supporting copy and status, Label for the action button.
+**Constraint:** Phase 1 is a single full-screen centered page. Only 3 type roles are needed — Display for the heading, Body for supporting copy and status, Label for the action button. Label is visually distinct from Body via size (14px vs 16px) and context, so both Display and Label share weight 700 with no ambiguity.
 
 ---
 
@@ -117,11 +117,11 @@ Each step label replaces the previous. A neutral spinner (animated border, `text
 | Page wrapper | `<main>` | `min-h-screen flex flex-col items-center justify-center gap-6 p-8 bg-zinc-950` |
 | Page heading | `<h1>` | `text-3xl font-bold text-zinc-50 text-center` |
 | Skill input | `<input>` | `bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 w-80 text-base text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600` |
-| Primary button | `<button>` | `bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm px-6 py-3 rounded-lg min-h-[44px] w-80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors` |
+| Primary button | `<button>` | `bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-3 rounded-lg min-h-[44px] w-80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors` |
 | Status panel | `<div>` | `bg-zinc-900 rounded-lg px-6 py-4 w-80 flex items-center gap-3` |
-| Step indicator text | `<span>` | `text-sm font-semibold text-zinc-400` |
+| Step indicator text | `<span>` | `text-sm font-bold text-zinc-400` |
 | Success link | `<a>` | `text-blue-400 underline text-base hover:text-blue-300` |
-| Error message | `<p>` | `text-sm font-semibold text-red-400` |
+| Error message | `<p>` | `text-sm font-bold text-red-400` |
 
 ---
 
@@ -199,6 +199,7 @@ No third-party component registries in Phase 1. All components are native HTML e
 | Font: Inter | Default for Next.js 14 + Tailwind; standard for technical demos |
 | CTA copy "Start Research" | RESEARCH.md — Pattern 5 code example (adapted from "Start Research") |
 | Input placeholder copy | RESEARCH.md — Pattern 5 code example ("e.g. knife skills, juggling...") |
+| Typography: collapsed to 2 weights (400 + 700) | Checker revision — removed font-semibold (600); Label reassigned to font-bold (700) |
 
 ---
 
