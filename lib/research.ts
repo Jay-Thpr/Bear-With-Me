@@ -21,7 +21,7 @@ import type { SkillModel } from "./types";
 import {
   conductWebResearch,
   findTutorialUrls,
-  GEMINI_MODEL,
+  EXTRACTION_MODEL,
 } from "./gemini";
 import {
   appendStructuredDocContent,
@@ -57,7 +57,7 @@ function inferResearchDomain(skill: string): string {
   return "other";
 }
 
-const WEB_RESEARCH_TIMEOUT_MS = 18_000;
+const WEB_RESEARCH_TIMEOUT_MS = 60_000;
 const QUALITY_GATES = {
   properFormSignals: 6,
   commonMistakes: 6,
@@ -126,7 +126,7 @@ export async function parseLearnerProfile(input: ResearchIntakeInput): Promise<L
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: `You are normalizing a learner's research intake for a coaching system.
 
 Input:
@@ -173,7 +173,7 @@ export async function generateClarificationQuestions(
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: `You are deciding whether a coaching research system needs clarification before researching a skill.
 
 Learner profile:
@@ -227,7 +227,7 @@ export async function buildResearchBrief(
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: `You are creating a research brief for a coaching-research pipeline.
 
 Learner profile:
@@ -250,7 +250,9 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- Focus on what should shape research, not on writing the final coaching plan yet.
+- priorityAreas MUST be specific to the technique, mechanics, and mistakes of "${learnerProfile.skill}" — not general pedagogical research areas. Example for juggling: "three-ball cascade throw mechanics", "common beginner timing mistakes". Never use abstract terms like "motor learning" or "scaffolding".
+- sourceSelectionGuidance should name specific source types useful for this skill (instructional coaches, sport science, skill-specific tutorials).
+- teachingImplications should describe what the coaching system needs to watch for during a live session.
 - Keep arrays concise and operational.`,
     config: {
       responseMimeType: "application/json",
@@ -301,23 +303,23 @@ export async function conductStructuredWebResearch(
     reason?: string;
   }> = [];
 
-  const timedPasses = focusPasses.map(async (focus) => {
+  const rawPasses: Array<{ status: "fulfilled"; value: { focus: string; durationMs: number; value: string } } | { status: "rejected"; reason: unknown }> = [];
+  for (const focus of focusPasses) {
     const startedAt = Date.now();
-    const value = await withTimeout(
-      conductWebResearch(brief.skill, brief.goal, brief.level, focus),
-      WEB_RESEARCH_TIMEOUT_MS,
-      `web research pass: ${focus}`
-    );
-    return {
-      focus,
-      durationMs: Date.now() - startedAt,
-      value,
-    };
-  });
-
-  const rawPasses = await Promise.allSettled(
-    timedPasses
-  );
+    try {
+      const value = await withTimeout(
+        conductWebResearch(brief.skill, brief.goal, brief.level, focus),
+        WEB_RESEARCH_TIMEOUT_MS,
+        `web research pass: ${focus}`
+      );
+      rawPasses.push({
+        status: "fulfilled",
+        value: { focus, durationMs: Date.now() - startedAt, value },
+      });
+    } catch (err) {
+      rawPasses.push({ status: "rejected", reason: err });
+    }
+  }
 
   for (const [index, result] of rawPasses.entries()) {
     const focus = focusPasses[index];
@@ -472,7 +474,8 @@ export async function conductStructuredVideoResearch(
 export async function synthesizeResearchModel(
   brief: ResearchBrief,
   webFindings: WebFinding[],
-  videoFindings: VideoFinding[]
+  videoFindings: VideoFinding[],
+  webSources: ResearchSource[] = []
 ): Promise<SkillResearchModel> {
   const evidenceUnits = collectResearchEvidence(webFindings, videoFindings);
   const consolidatedEvidence = consolidateResearchEvidence(evidenceUnits);
@@ -481,13 +484,14 @@ export async function synthesizeResearchModel(
     return enforceResearchDepth(
       buildFallbackResearchModel(brief, webFindings, videoFindings, consolidatedEvidence),
       webFindings,
-      videoFindings
+      videoFindings,
+      webSources
     );
   }
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: `You are synthesizing a high-depth, coaching-ready JSON research dossier.
 
 Research brief:
@@ -638,8 +642,14 @@ Rules:
 - Session plan must reflect the learner profile and goal.
 - Include enough detail to support downstream coaching without requiring the original sources.
 - Build a true diagnostic model: each mistake should say what is happening, why, what cue to say, what drill to use, and what improvement looks like when possible.
-- Build stage-based progression: each stage should have prerequisite, goal, blockers, drills, and ready-to-advance criteria.
+- Build stage-based progression: each stage should have prerequisite, goal, blockers, drills, and ready-to-advance criteria. Stage names must be skill-specific (e.g. "Single-ball toss exchange", "Two-ball flash"), never generic placeholders like "Build one repeatable action cycle".
+- progressionOrder must list stage goal strings in order from progressionStages — do not leave it empty.
 - Include at least 6 proper form signals, 6 common mistakes, 4 drills, and 5 progression stages when evidence permits.
+- openQuestions must only contain genuine uncertainties — things not covered by the evidence. Do NOT ask about topics you already synthesized (e.g. "what are the most common mistakes" when you already listed them).
+- safetyConsiderations must include at least 2 items relevant to this skill's physical risks.
+- safetyConsiderations must not contain duplicate or near-duplicate items.
+- sourceCoverage must include at least one entry per properFormSignal and one per commonMistake.
+- Each sourceCoverage entry must name the specific claim and cite at least one source.
 - Keep it structured and implementation-ready.`,
     config: {
       responseMimeType: "application/json",
@@ -647,15 +657,27 @@ Rules:
   });
 
   const parsed = JSON.parse(response.text || "{}") as SkillResearchModel;
-  const hydrated = enforceResearchDepth(parsed, webFindings, videoFindings);
-  return await repairResearchModelIfNeeded(brief, hydrated, webFindings, videoFindings);
+  const hydrated = enforceResearchDepth(parsed, webFindings, videoFindings, webSources);
+  const filteredHydrated = {
+    ...hydrated,
+    webSources: hydrated.webSources.filter(
+      (s) => !s.url.startsWith("internal://") && s.url !== ""
+    ),
+    sourceCoverage: hydrated.sourceCoverage.map((entry) => ({
+      ...entry,
+      sources: entry.sources.filter((s) => !s.url.startsWith("internal://") && s.url !== ""),
+    })),
+  };
+  const repaired = await repairResearchModelIfNeeded(brief, filteredHydrated, webFindings, videoFindings, webSources);
+  return postProcessResearchModel(repaired);
 }
 
 async function repairResearchModelIfNeeded(
   brief: ResearchBrief,
   researchModel: SkillResearchModel,
   webFindings: WebFinding[],
-  videoFindings: VideoFinding[]
+  videoFindings: VideoFinding[],
+  webSources: ResearchSource[] = []
 ): Promise<SkillResearchModel> {
   const missingSections = getMissingResearchSections(researchModel);
 
@@ -669,7 +691,7 @@ async function repairResearchModelIfNeeded(
 
   for (const section of missingSections) {
     const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+      model: EXTRACTION_MODEL,
       contents: buildRepairPrompt(section, brief, repairedModel, webFindings, videoFindings),
       config: {
         responseMimeType: "application/json",
@@ -684,17 +706,34 @@ async function repairResearchModelIfNeeded(
     }
   }
 
-  const hydrated = enforceResearchDepth(repairedModel, webFindings, videoFindings);
+  const hydrated = enforceResearchDepth(repairedModel, webFindings, videoFindings, webSources);
+  const allRepairedSections = dedupeStrings([
+    ...hydrated.researchQuality.repairedSections,
+    ...repairedSections,
+  ]);
   return {
     ...hydrated,
     researchQuality: {
       ...hydrated.researchQuality,
-      repairedSections: dedupeStrings([
-        ...hydrated.researchQuality.repairedSections,
-        ...repairedSections,
-      ]),
+      score: computePostRepairScore(hydrated),
+      repairedSections: allRepairedSections,
     },
   };
+}
+
+function computePostRepairScore(model: SkillResearchModel): number {
+  const gates: [number, number][] = [
+    [model.properFormSignals.length, QUALITY_GATES.properFormSignals],
+    [Object.keys(model.properForm).length, QUALITY_GATES.properFormSignals],
+    [model.progressionStages.length, QUALITY_GATES.progressionStages],
+    [model.commonMistakes.length, QUALITY_GATES.commonMistakes],
+    [model.diagnostics.length, QUALITY_GATES.diagnostics],
+    [model.beginnerDrills.length, QUALITY_GATES.beginnerDrills],
+    [model.sourceCoverage.length, QUALITY_GATES.sourceCoverage],
+  ];
+  const passed = gates.filter(([actual, required]) => actual >= required).length;
+  // Scale: 0/7 gates = 40, 7/7 gates = 95
+  return Math.round(40 + (passed / gates.length) * 55);
 }
 
 function getMissingResearchSections(researchModel: SkillResearchModel): RepairableSection[] {
@@ -1475,7 +1514,7 @@ function buildFallbackResearchModel(
     })),
     coachingCues: beginnerPrinciples.length > 0 ? beginnerPrinciples : ["One correction at a time", "Slow down and reset", "Focus on repeatable rhythm"],
     tutorialMoments,
-    tutorialLibrary: buildTutorialLibrary(videoFindings),
+    tutorialLibrary: buildTutorialLibrary(videoFindings, brief.domain),
     qualityChecklist: [
       "Can the coach identify the learner's current stage in the progression?",
       "Is each correction tied to an observable cue?",
@@ -1494,12 +1533,14 @@ function buildFallbackResearchModel(
       secondaryFocus: brief.priorityAreas[1] || "Build consistency",
       checkpoints: ["Establish baseline", "Reinforce proper form", "Review improvement"],
     },
-    webSources: webFindings.map((finding) => ({
-      type: "web",
-      title: finding.title,
-      url: finding.url,
-      summary: finding.summary,
-    })),
+    webSources: webFindings
+      .filter((finding) => !finding.url.startsWith("internal://") && finding.url !== "")
+      .map((finding) => ({
+        type: "web" as const,
+        title: finding.title,
+        url: finding.url,
+        summary: finding.summary,
+      })),
     videoSources: videoFindings,
     openQuestions: [],
   };
@@ -1511,6 +1552,130 @@ function slugify(value: string): string {
 
 function dedupeStrings(items: string[]): string[] {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+}
+
+function dedupeStringsFuzzy(items: string[], threshold = 0.5): string[] {
+  const STOP = new Set(["a", "an", "the", "to", "for", "in", "and", "or", "of", "at", "by", "up", "is", "it", "on"]);
+  const tokenize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
+
+  const result: string[] = [];
+  for (const item of items) {
+    const norm = item.toLowerCase().trim();
+    const tokens = new Set(tokenize(item));
+    const isDuplicate = result.some((existing) => {
+      const en = existing.toLowerCase().trim();
+      // Length-ratio check (original)
+      const [shorter, longer] = norm.length < en.length ? [norm, en] : [en, norm];
+      if (longer.includes(shorter) || shorter.length / longer.length > threshold) return true;
+      // Token overlap check: if shorter set's tokens are ≥80% covered by longer set
+      const existingTokens = new Set(tokenize(existing));
+      const [smallSet, largeSet] = tokens.size < existingTokens.size ? [tokens, existingTokens] : [existingTokens, tokens];
+      if (smallSet.size === 0) return false;
+      const overlap = [...smallSet].filter(
+        (t) => largeSet.has(t) || [...largeSet].some((u) => t.length >= 4 && u.length >= 4 && (t.startsWith(u) || u.startsWith(t)))
+      ).length;
+      return overlap / smallSet.size >= 0.8;
+    });
+    if (!isDuplicate) result.push(item);
+  }
+  return result;
+}
+
+function isAllFallbackEvidence(model: SkillResearchModel): boolean {
+  const units = model.evidenceCollection.units;
+  return units.length > 0 && units.every((u) => u.sourceConfidence === "low");
+}
+
+function postProcessResearchModel(model: SkillResearchModel): SkillResearchModel {
+  let result = { ...model };
+
+  // Normalize score: synthesis model sometimes returns 0-1 float instead of 0-100 int
+  if (result.researchQuality.score > 0 && result.researchQuality.score <= 1) {
+    result = {
+      ...result,
+      researchQuality: { ...result.researchQuality, score: Math.round(result.researchQuality.score * 100) },
+    };
+  }
+
+  // Task 2.1 — Cap quality score when all evidence is fallback
+  if (isAllFallbackEvidence(result) && result.researchQuality.score > 65) {
+    result = {
+      ...result,
+      researchQuality: {
+        ...result.researchQuality,
+        score: Math.min(result.researchQuality.score, 65),
+        notes: dedupeStrings([
+          ...result.researchQuality.notes,
+          "Score capped at 65: all evidence carries low source confidence (fallback only). Re-run when live retrieval succeeds.",
+        ]),
+      },
+    };
+  }
+
+  // Task 2.2 — Deduplicate beginnerDrills by name, then reconcile referenced drills
+  const seenDrillNames = new Set<string>();
+  result = {
+    ...result,
+    beginnerDrills: result.beginnerDrills.filter((d) => {
+      const key = d.name.toLowerCase().trim();
+      if (seenDrillNames.has(key)) return false;
+      seenDrillNames.add(key);
+      return true;
+    }),
+  };
+
+  const existingDrillNames = new Set(result.beginnerDrills.map((d) => d.name.toLowerCase()));
+  const referencedDrills = result.commonMistakes
+    .map((m) => m.drill)
+    .filter((drill): drill is string => Boolean(drill));
+
+  const missingDrills: typeof result.beginnerDrills = referencedDrills
+    .filter((drillName) => !existingDrillNames.has(drillName.toLowerCase()))
+    .map((drillName) => {
+      const relatedMistake = result.commonMistakes.find((m) => m.drill === drillName);
+      return {
+        name: drillName,
+        objective: `Correct the issue: ${relatedMistake?.issue || drillName}.`,
+        steps: ["Isolate the movement", "Repeat slowly with one cue", "Reset between reps"],
+        successSignals: relatedMistake?.correction ? [relatedMistake.correction] : ["Movement becomes controlled and repeatable"],
+        commonErrors: relatedMistake?.issue ? [relatedMistake.issue] : [],
+        recommendedDuration: "2-3 minutes",
+      };
+    });
+
+  if (missingDrills.length > 0) {
+    result = { ...result, beginnerDrills: [...result.beginnerDrills, ...missingDrills] };
+  }
+
+  // Task 2.3 — Deduplicate safetyConsiderations
+  result = {
+    ...result,
+    safetyConsiderations: dedupeStringsFuzzy(result.safetyConsiderations),
+  };
+
+  // Task 5.1 — Sort evidence units by type priority
+  const TYPE_ORDER: Record<string, number> = {
+    proper_form: 0,
+    mistake: 1,
+    mistake_cause: 2,
+    progression: 3,
+    drill: 4,
+    safety: 5,
+    coaching_cue: 6,
+    tutorial: 7,
+    source_claim: 8,
+  };
+  result = {
+    ...result,
+    evidenceCollection: {
+      units: [...result.evidenceCollection.units].sort(
+        (a, b) => (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9)
+      ),
+    },
+  };
+
+  return result;
 }
 
 function objectFromList(items: string[]): Record<string, string> {
@@ -1568,6 +1733,7 @@ function buildFallbackResearchSources(
       summary: `Fallback evidence pack generated for ${brief.skill} when grounded retrieval did not return usable results.`,
       relevance: focus,
       confidence: "low",
+      fallback: true,
     },
   ];
 }
@@ -1736,6 +1902,28 @@ function buildFallbackWebFinding(
           sourceConfidence: "low",
           sourceRefs: [sourceRef],
         },
+        {
+          type: "drill",
+          label: "Metronome rhythm drill",
+          detail: "Use a counted rhythm to keep throws evenly spaced and prevent rushing.",
+          relatedDrill: "Metronome rhythm drill",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 3,
+          sourceConfidence: "low",
+          sourceRefs: [sourceRef],
+        },
+        {
+          type: "drill",
+          label: "Soft catch reset drill",
+          detail: "Catch softly, let the hand drop slightly, then immediately prepare the next throw.",
+          relatedDrill: "Soft catch reset drill",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 4,
+          sourceConfidence: "low",
+          sourceRefs: [sourceRef],
+        },
       ],
       "common beginner mistakes, likely causes, correction cues, and safety constraints": [
         {
@@ -1873,7 +2061,7 @@ function buildFallbackWebFinding(
     prerequisites:
       focus === "beginner progression, prerequisite subskills, and drill sequencing"
         ? [
-            `Establish one-object control before attempting the full ${brief.goal}.`,
+            `Establish one-object control before attempting the full ${brief.skill}.`,
             "Use short, repeatable sets and reset after visible errors.",
           ]
         : [],
@@ -2211,30 +2399,134 @@ function buildProgressionStages(
   }));
 }
 
-function buildTutorialLibrary(videoFindings: VideoFinding[]): TutorialReference[] {
+const STATIC_TUTORIAL_LIBRARY: Record<string, TutorialReference[]> = {
+  object_manipulation: [
+    {
+      title: "Learn to Juggle 3 Balls — Beginner Step-by-Step",
+      url: "https://www.youtube.com/results?search_query=learn+to+juggle+3+balls+beginner",
+      summary: "Step-by-step overview of the cascade pattern from one ball to three.",
+      category: "overview",
+      useCases: ["Introduce the full cascade shape before the first session", "Orientation for first-time learners"],
+    },
+    {
+      title: "Juggling Drills — Isolation and Height Consistency",
+      url: "https://www.youtube.com/results?search_query=juggling+drills+height+consistency",
+      summary: "Focused drills for keeping throw height consistent and preventing pattern collapse.",
+      category: "drill",
+      useCases: ["Use when learner has height or timing variance", "Assign for self-practice between sessions"],
+    },
+    {
+      title: "Common Juggling Mistakes and How to Fix Them",
+      url: "https://www.youtube.com/results?search_query=juggling+common+mistakes+corrections",
+      summary: "Identifies the most common beginner errors and provides specific correction cues.",
+      category: "troubleshooting",
+      useCases: ["Reference when learner keeps making the same error", "Supplement coaching cue with visual example"],
+    },
+    {
+      title: "Juggling Pattern Reinforcement — Full Cascade",
+      url: "https://www.youtube.com/results?search_query=juggling+3+ball+cascade+full+tutorial",
+      summary: "Reinforcement tutorial for learners close to completing the three-ball cascade.",
+      category: "reinforcement",
+      useCases: ["Use when learner is near full pattern but losing rhythm", "Consolidation review after session"],
+    },
+  ],
+  body_movement: [
+    {
+      title: "Beginner Movement Fundamentals",
+      url: "https://www.youtube.com/results?search_query=beginner+body+movement+fundamentals",
+      summary: "Core body movement principles for beginners.",
+      category: "overview",
+      useCases: ["Orient learner before the first session"],
+    },
+    {
+      title: "Movement Drills for Beginners",
+      url: "https://www.youtube.com/results?search_query=beginner+body+movement+drills",
+      summary: "Drill-based training for building coordination and control.",
+      category: "drill",
+      useCases: ["Use during self-practice"],
+    },
+    {
+      title: "Common Movement Mistakes",
+      url: "https://www.youtube.com/results?search_query=common+movement+mistakes+corrections",
+      summary: "Corrections for the most common movement errors.",
+      category: "troubleshooting",
+      useCases: ["Reference when coaching corrections aren't landing"],
+    },
+  ],
+  instrument_practice: [
+    {
+      title: "Beginner Instrument Practice Guide",
+      url: "https://www.youtube.com/results?search_query=beginner+instrument+practice+tutorial",
+      summary: "Orientation guide for first-time instrument learners.",
+      category: "overview",
+      useCases: ["Introduce practice concepts before session"],
+    },
+    {
+      title: "Instrument Technique Drills",
+      url: "https://www.youtube.com/results?search_query=instrument+technique+drills+beginner",
+      summary: "Core technique drills for early-stage players.",
+      category: "drill",
+      useCases: ["Assign for self-study between sessions"],
+    },
+  ],
+};
+
+function buildTutorialLibrary(videoFindings: VideoFinding[], domain?: string): TutorialReference[] {
   const categories: TutorialReference["category"][] = ["overview", "drill", "troubleshooting", "reinforcement"];
-  return videoFindings.slice(0, 4).map((video, index) => ({
-    title: video.title,
-    url: video.url,
-    summary: video.summary,
-    category: categories[index % categories.length],
-    useCases: [
-      "Offer optional learner review outside the live session",
-      "Support self-study between coaching sessions",
-    ],
-  }));
+  const richVideos = videoFindings.filter(v => v.techniques.length > 0 || v.bestMoments.length > 0);
+  if (richVideos.length > 0) {
+    return richVideos.slice(0, 4).map((video, index) => ({
+      title: video.title,
+      url: video.url,
+      summary: video.summary,
+      category: categories[index % categories.length],
+      useCases: [
+        "Offer optional learner review outside the live session",
+        "Support self-study between coaching sessions",
+      ],
+    }));
+  }
+
+  // Static fallback when no video findings are available
+  if (domain && STATIC_TUTORIAL_LIBRARY[domain]) {
+    return STATIC_TUTORIAL_LIBRARY[domain];
+  }
+  return STATIC_TUTORIAL_LIBRARY.object_manipulation;
 }
 
 function enforceResearchDepth(
   researchModel: SkillResearchModel,
   webFindings: WebFinding[],
-  videoFindings: VideoFinding[]
+  videoFindings: VideoFinding[],
+  webSources: ResearchSource[] = []
 ): SkillResearchModel {
-  const consolidatedEvidence = consolidateResearchEvidence(
-    researchModel.evidenceCollection?.units?.length
-      ? researchModel.evidenceCollection.units
-      : collectResearchEvidence(webFindings, videoFindings)
-  );
+  // Always merge raw collected evidence with any units the synthesis model added
+  const rawEvidence = collectResearchEvidence(webFindings, videoFindings);
+  const consolidatedEvidence = consolidateResearchEvidence([
+    ...rawEvidence,
+    ...(researchModel.evidenceCollection?.units || []),
+  ]);
+
+  // Build URL→summary lookup from grounding model sources
+  const sourceSummaryMap = new Map<string, string>();
+  for (const source of webSources) {
+    if (source.url && source.summary && !sourceSummaryMap.has(source.url)) {
+      sourceSummaryMap.set(source.url, source.summary);
+    }
+  }
+
+  // Build comprehensive webSources from all evidence sourceRefs (grounding URLs)
+  const seenSourceUrls = new Set<string>();
+  const harvestedWebSources: ResearchSource[] = rawEvidence
+    .flatMap((unit) => unit.sourceRefs || [])
+    .filter((ref) => {
+      if (ref.type !== "web" || ref.url.startsWith("internal://") || !ref.url || seenSourceUrls.has(ref.url)) return false;
+      seenSourceUrls.add(ref.url);
+      return true;
+    })
+    .slice(0, 20)
+    .map((ref) => ({ type: "web" as const, title: ref.title, url: ref.url, summary: sourceSummaryMap.get(ref.url) || "" }));
+
   const prerequisites = dedupeStrings([
     ...(researchModel.prerequisites || []),
     ...webFindings.flatMap((finding) => finding.prerequisites),
@@ -2318,7 +2610,11 @@ function enforceResearchDepth(
       evidenceCounts: countEvidenceByType(consolidatedEvidence.units),
       discardedEvidenceCount: consolidatedEvidence.discarded.length,
       notes: dedupeStrings([
-        ...(researchModel.researchQuality?.notes || []),
+        ...(Array.isArray(researchModel.researchQuality?.notes)
+          ? researchModel.researchQuality.notes
+          : typeof researchModel.researchQuality?.notes === "string"
+            ? [researchModel.researchQuality.notes]
+            : []),
         ...consolidatedEvidence.contradictions.map(
           (item) => `Potential contradiction in ${item.key}: ${item.details.join(" | ")}`
         ),
@@ -2342,16 +2638,21 @@ function enforceResearchDepth(
         })),
     coachingCues: coachingCues.slice(0, 10),
     tutorialMoments: tutorialMoments.slice(0, 10),
-    tutorialLibrary:
-      researchModel.tutorialLibrary.length > 0
-        ? researchModel.tutorialLibrary
-        : buildTutorialLibrary(videoFindings),
+    tutorialLibrary: (() => {
+      const usable = researchModel.tutorialLibrary.filter(
+        (t) => !t.url.includes("results?search_query") && !t.url.startsWith("internal://")
+      );
+      return usable.length > 0 ? usable : buildTutorialLibrary(videoFindings, researchModel.metadata.domain);
+    })(),
     qualityChecklist: qualityChecklist.slice(0, 10),
     sourceCoverage,
     safetyConsiderations: dedupeStrings([
       ...(researchModel.safetyConsiderations || []),
       ...webFindings.flatMap((finding) => finding.safetyNotes),
     ]),
+    webSources: harvestedWebSources.length > 0
+      ? harvestedWebSources
+      : (researchModel.webSources || []).filter((s) => !s.url.startsWith("internal://") && s.url !== ""),
     openQuestions: researchModel.openQuestions || [],
   };
 }

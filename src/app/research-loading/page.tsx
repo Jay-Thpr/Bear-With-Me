@@ -232,8 +232,10 @@ function ResearchLoadingContent() {
             <motion.button
               initial={{ opacity: 0 }}
               animate={{ opacity: isComplete ? 1 : 0 }}
-              onClick={() => router.push(`/session-briefing?skill=${encodeURIComponent(skill)}`)}
-              className="flex items-center gap-2 text-sm font-semibold text-emerald-400 transition-colors hover:text-emerald-300"
+              onClick={() => { if (isComplete) router.push(`/session-briefing?skill=${encodeURIComponent(skill)}`); }}
+              disabled={!isComplete}
+              style={{ pointerEvents: isComplete ? "auto" : "none" }}
+              className="flex items-center gap-2 text-sm font-semibold text-emerald-400 transition-colors hover:text-emerald-300 disabled:cursor-not-allowed"
             >
               Continue to Briefing <ArrowRight className="h-4 w-4" />
             </motion.button>

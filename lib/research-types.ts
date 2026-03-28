@@ -75,6 +75,7 @@ export interface ResearchSource {
   summary: string;
   relevance?: string;
   confidence?: "high" | "medium" | "low";
+  fallback?: boolean;
 }
 
 export interface WebFinding {

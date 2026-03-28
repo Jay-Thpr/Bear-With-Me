@@ -2,9 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 import { buildDiscoveryPrompt } from "../prompts/skill-research";
 import type { SkillModel } from "./types";
 
-// Single source of truth for model name — update here if model changes
-// Previous 2.0 model is deprecated (March 2026) and shut down June 1, 2026
-export const GEMINI_MODEL = "gemini-2.5-flash";
+// Model split — each constant targets a different capability tier:
+// GROUNDING_MODEL: gemini-2.5-flash with thinking disabled — confirmed googleSearch grounding,
+//   thinkingBudget:0 eliminates the 15-25s thinking overhead that caused timeouts
+// EXTRACTION_MODEL: fast JSON extraction/synthesis — 2.5x faster TTFT
+// LIVE_MODEL: bidi real-time session (live coaching path)
+export const GROUNDING_MODEL = "gemini-2.5-flash";
+export const EXTRACTION_MODEL = "gemini-3.1-flash-lite-preview";
+export const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
 function getAI() {
   if (!process.env.GEMINI_API_KEY) {
@@ -65,9 +70,10 @@ export async function findTutorialUrls(skill: string): Promise<string[]> {
   const ai = getAI();
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: GROUNDING_MODEL,
     config: {
       tools: [{ googleSearch: {} }],
+      thinkingConfig: { thinkingBudget: 0 },
     },
     contents: buildDiscoveryPrompt(skill),
   });
@@ -76,9 +82,7 @@ export async function findTutorialUrls(skill: string): Promise<string[]> {
   const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
   const youtubeUrls = chunks
     .map((c: any) => c.web?.uri as string)
-    .filter(
-      (url: string) => url?.includes("youtube.com/watch") || url?.includes("youtu.be/")
-    )
+    .filter((url: string) => url?.includes("youtube.com"))
     .slice(0, 5);
 
   // Fallback: if grounding returned < 3 YouTube URLs, supplement with YouTube Data API
@@ -87,6 +91,50 @@ export async function findTutorialUrls(skill: string): Promise<string[]> {
     const fallbackUrls = await searchYouTubeTutorials(skill);
     const combined = [...new Set([...youtubeUrls, ...fallbackUrls])].slice(0, 5);
     return combined;
+  }
+
+  // Static fallback: if still < 1 YouTube URL, use keyword-matched search URLs
+  const STATIC_TUTORIAL_FALLBACKS: Record<string, string[]> = {
+    juggl: [
+      "https://www.youtube.com/results?search_query=learn+to+juggle+3+balls+beginner",
+      "https://www.youtube.com/results?search_query=juggling+tutorial+for+beginners",
+      "https://www.youtube.com/results?search_query=juggling+3+balls+step+by+step",
+    ],
+    "yo-yo": [
+      "https://www.youtube.com/results?search_query=yo-yo+beginner+tutorial",
+      "https://www.youtube.com/results?search_query=yoyo+tricks+for+beginners",
+    ],
+    yoyo: [
+      "https://www.youtube.com/results?search_query=yo-yo+beginner+tutorial",
+      "https://www.youtube.com/results?search_query=yoyo+tricks+for+beginners",
+    ],
+    handstand: [
+      "https://www.youtube.com/results?search_query=handstand+tutorial+beginner",
+      "https://www.youtube.com/results?search_query=how+to+handstand+step+by+step",
+    ],
+    piano: [
+      "https://www.youtube.com/results?search_query=piano+beginner+tutorial",
+      "https://www.youtube.com/results?search_query=learn+piano+for+beginners",
+    ],
+    guitar: [
+      "https://www.youtube.com/results?search_query=guitar+beginner+tutorial",
+      "https://www.youtube.com/results?search_query=learn+guitar+for+beginners",
+    ],
+    "knife skill": [
+      "https://www.youtube.com/results?search_query=knife+skills+beginner+tutorial",
+      "https://www.youtube.com/results?search_query=how+to+hold+a+chef+knife",
+    ],
+  };
+
+  if (youtubeUrls.length < 1) {
+    const normalizedSkill = skill.toLowerCase();
+    const matchedKey = Object.keys(STATIC_TUTORIAL_FALLBACKS).find((key) =>
+      normalizedSkill.includes(key)
+    );
+    if (matchedKey) {
+      const staticUrls = STATIC_TUTORIAL_FALLBACKS[matchedKey];
+      return [...new Set([...youtubeUrls, ...staticUrls])].slice(0, 3);
+    }
   }
 
   return youtubeUrls;
@@ -234,7 +282,7 @@ export async function conductWebResearch(
   const ai = getAI();
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: GROUNDING_MODEL,
     contents: `Research how to coach someone in "${skill}", goal: "${goal}", level: ${level}.
 
 Current retrieval focus: ${focus}
@@ -243,29 +291,11 @@ Use Google Search to find high-signal, practical material for this focus. Priori
 
 Extract atomic evidence units only. Prefer concrete beginner coaching evidence over summary prose.
 
-Allowed evidence unit types:
-- "proper_form"
-- "mistake"
-- "mistake_cause"
-- "drill"
-- "progression"
-- "safety"
-- "coaching_cue"
-- "source_claim"
+Allowed evidence unit types: "proper_form", "mistake", "mistake_cause", "drill", "progression", "safety", "coaching_cue", "source_claim"
 
-Scoring rules:
-- Use 1-5 scales for beginnerUsefulness, specificity, and observability.
-- Only use observability > 1 if the cue is visibly checkable from a camera.
-- Set sourceConfidence to high, medium, or low.
-
-For mistakes:
-- make them observable
-- include likelyCause when possible
-- include correctionCue when possible
-- include relatedDrill when possible
-
-For progression:
-- include stage and readyToAdvance when possible
+For mistakes: include likelyCause, correctionCue, and relatedDrill when possible.
+For drills: include relatedDrill name.
+All observableCue values must be checkable from a camera.
 
 Return ONLY valid JSON:
 {
@@ -280,13 +310,7 @@ Return ONLY valid JSON:
       "observableCue": "what a camera should see if relevant",
       "likelyCause": "for mistakes only",
       "correctionCue": "short spoken cue if relevant",
-      "relatedDrill": "specific drill if relevant",
-      "stage": "progression stage if relevant",
-      "readyToAdvance": "what success looks like before moving on",
-      "beginnerUsefulness": 1,
-      "specificity": 1,
-      "observability": 1,
-      "sourceConfidence": "high"
+      "relatedDrill": "specific drill if relevant"
     }
   ],
   "openQuestions": ["uncertain area worth follow-up if evidence is conflicting or weak"],
@@ -295,6 +319,7 @@ Return ONLY valid JSON:
 }`,
     config: {
       tools: [{ googleSearch: {} }],
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
@@ -327,7 +352,7 @@ export async function analyzeYouTubeVideo(
   const ai = getAI();
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: [
       { fileData: { fileUri: videoUrl } },
       { text: `Analyze this tutorial video for coaching someone in "${skill}" with goal "${goal}".
@@ -401,7 +426,7 @@ export async function synthesizeSkillModel(
   const ai = getAI();
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: EXTRACTION_MODEL,
     contents: `You are synthesizing research into a structured coaching plan for "${skill}".
 
 GOAL: ${goal}

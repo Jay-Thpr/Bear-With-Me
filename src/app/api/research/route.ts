@@ -421,7 +421,8 @@ export async function POST(req: NextRequest) {
         const researchModel = await synthesizeResearchModel(
           researchBrief,
           webResearch.findings,
-          videoResearch.videos
+          videoResearch.videos,
+          webResearch.sources
         );
         await syncLiveResearch({
           ...liveRunState,
@@ -444,7 +445,7 @@ export async function POST(req: NextRequest) {
         });
         const skillModel = mapResearchModelToSkillModel(researchModel, illustrationUrl);
         await emit("status", {
-          message: `✅ Coaching plan ready in ${formatDurationMs(synthesisStartedAt)} with quality score ${researchModel.researchQuality.score}`,
+          message: `✅ Coaching plan ready in ${formatDurationMs(synthesisStartedAt)} — ${researchModel.researchQuality.score < 50 ? "Fallback mode (limited sources)" : `quality score ${researchModel.researchQuality.score}`}`,
         });
 
         if (initializedWorkspace && oauthClient) {

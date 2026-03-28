@@ -19,12 +19,17 @@ vi.mock("../../prompts/skill-research", () => ({
   buildSynthesisPrompt: vi.fn(() => "synthesize prompt"),
 }));
 
-import { findTutorialUrls, analyzeSkillVideos, synthesizeSkillDoc, GEMINI_MODEL } from "../../lib/gemini";
+import { findTutorialUrls, analyzeAllVideos, synthesizeSkillModel, GROUNDING_MODEL, EXTRACTION_MODEL } from "../../lib/gemini";
 
 describe("Gemini pipeline constants", () => {
-  it("GEMINI_MODEL is gemini-2.5-flash (not deprecated 2.0)", () => {
-    expect(GEMINI_MODEL).toBe("gemini-2.5-flash");
-    expect(GEMINI_MODEL).not.toContain("2.0");
+  it("GROUNDING_MODEL uses gemini-3.1-pro-preview", () => {
+    expect(GROUNDING_MODEL).toBe("gemini-3.1-pro-preview");
+    expect(GROUNDING_MODEL).not.toContain("2.0");
+  });
+
+  it("EXTRACTION_MODEL uses gemini-3.1-flash-lite-preview", () => {
+    expect(EXTRACTION_MODEL).toBe("gemini-3.1-flash-lite-preview");
+    expect(EXTRACTION_MODEL).not.toContain("2.0");
   });
 });
 
@@ -81,51 +86,44 @@ describe("findTutorialUrls (RES-02)", () => {
   });
 });
 
-describe("analyzeSkillVideos (RES-03)", () => {
+describe("analyzeAllVideos (RES-03)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GEMINI_API_KEY = "test-key";
   });
 
-  it("RES-03: throws when urls array is empty", async () => {
-    await expect(analyzeSkillVideos("knife skills", [])).rejects.toThrow(
-      "No video URLs to analyze"
-    );
+  it("RES-03: returns empty array when urls array is empty", async () => {
+    const result = await analyzeAllVideos([], "knife skills", "learn knife skills");
+    expect(result).toEqual([]);
   });
 
-  it("RES-03: passes video URLs as fileData.fileUri content parts", async () => {
-    mockGenerateContent.mockResolvedValue({ text: '{"skill":"knife skills"}' });
-    await analyzeSkillVideos("knife skills", ["https://www.youtube.com/watch?v=abc"]);
+  it("RES-03: passes video URL as fileData.fileUri content part", async () => {
+    mockGenerateContent.mockResolvedValue({ text: '{"url":"https://www.youtube.com/watch?v=abc","title":"test"}' });
+    await analyzeAllVideos(["https://www.youtube.com/watch?v=abc"], "knife skills", "learn knife skills");
     const call = mockGenerateContent.mock.calls[0][0];
     const videoContent = call.contents[0];
     expect(videoContent).toHaveProperty("fileData.fileUri", "https://www.youtube.com/watch?v=abc");
   });
 
-  it("RES-03: returns the response text from Gemini", async () => {
-    const mockJson = JSON.stringify({ skill: "knife skills", techniqueSteps: ["step 1"] });
+  it("RES-03: returns array of response strings", async () => {
+    const mockJson = JSON.stringify({ url: "https://www.youtube.com/watch?v=abc", title: "test", techniques: [] });
     mockGenerateContent.mockResolvedValue({ text: mockJson });
-    const result = await analyzeSkillVideos("knife skills", ["https://www.youtube.com/watch?v=abc"]);
-    expect(result).toBe(mockJson);
+    const result = await analyzeAllVideos(["https://www.youtube.com/watch?v=abc"], "knife skills", "learn knife skills");
+    expect(Array.isArray(result)).toBe(true);
   });
 });
 
-describe("synthesizeSkillDoc (RES-04)", () => {
+describe("synthesizeSkillModel (RES-04)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GEMINI_API_KEY = "test-key";
   });
 
-  it("RES-04: returns non-empty string from Gemini", async () => {
-    mockGenerateContent.mockResolvedValue({ text: "SKILL OVERVIEW\nKnife skills..." });
-    const result = await synthesizeSkillDoc("knife skills", "{}");
+  it("RES-04: returns parsed skill model object from Gemini", async () => {
+    const mockModel = { metadata: { skill: "knife skills", goal: "learn", level: "beginner", createdAt: "", illustration: "" }, teachingStrategy: {}, properForm: {}, commonMistakes: [], progressionOrder: [], safetyConsiderations: [], videoReferences: [], sessionPlan: {}, webSources: [] };
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockModel) });
+    const result = await synthesizeSkillModel("knife skills", "learn knife skills", "beginner", "{}", [], "");
     expect(result).toBeTruthy();
-    expect(typeof result).toBe("string");
-  });
-
-  it("RES-04: throws when Gemini returns empty text", async () => {
-    mockGenerateContent.mockResolvedValue({ text: "" });
-    await expect(synthesizeSkillDoc("knife skills", "{}")).rejects.toThrow(
-      "Gemini returned empty synthesis"
-    );
+    expect(typeof result).toBe("object");
   });
 });
