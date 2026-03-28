@@ -6,7 +6,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 const nav = [
   { to: "/", label: "Home" },
   { to: "/onboarding", label: "Goals" },
-  { to: "/dashboard", label: "Quest board" },
+  { to: "/dashboard", label: "Journey" },
 ];
 
 export default function NavLayout({ children }: { children: React.ReactNode }) {
@@ -43,7 +43,7 @@ export default function NavLayout({ children }: { children: React.ReactNode }) {
             </button>
           ) : (
             <button
-              onClick={() => signIn("google")}
+              onClick={() => signIn("google", { callbackUrl: window.location.pathname })}
               className="btn btn--ghost"
               style={{ padding: "0.35rem 0.75rem", fontSize: "0.85rem", borderWidth: "2px" }}
             >

@@ -3,6 +3,8 @@ import { google } from "googleapis";
 import { createSkillDoc } from "../../../../../lib/google-docs";
 import { getUserOAuthClient } from "../../../../../lib/getUserAuth";
 
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   const oauthClient = await getUserOAuthClient();
 

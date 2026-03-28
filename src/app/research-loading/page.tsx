@@ -25,6 +25,17 @@ function ResearchLoadingContent() {
   const [rootFolderUrl, setRootFolderUrl] = useState<string | null>(null);
   const isDoneRef = useRef(false);
   const hasStartedRef = useRef(false);
+  const seenEventRef = useRef(false);
+
+  const completeResearch = (nextSkill: string) => {
+    isDoneRef.current = true;
+    setCurrentResearchTarget("Research complete");
+    setProgress(100);
+    setIsComplete(true);
+    window.setTimeout(() => {
+      router.push(`/dashboard?skill=${encodeURIComponent(nextSkill)}`);
+    }, 500);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -39,6 +50,7 @@ function ResearchLoadingContent() {
       docUrl?: string;
       rootFolderUrl?: string;
     }) => {
+      seenEventRef.current = true;
       switch (data.type) {
         case "status":
           if (!isMounted) break;
@@ -68,7 +80,6 @@ function ResearchLoadingContent() {
           break;
         case "done":
           if (!isMounted) break;
-          isDoneRef.current = true;
           sessionStorage.setItem("skillModelJson", data.skillModelJson || JSON.stringify(data.skillModel || {}));
           sessionStorage.setItem("systemPrompt", data.systemPrompt || "");
           sessionStorage.setItem("docId", data.docUrl?.split("/d/")[1]?.split("/")[0] || "");
@@ -78,14 +89,13 @@ function ResearchLoadingContent() {
           if (data.rootFolderUrl) {
             setRootFolderUrl(data.rootFolderUrl);
           }
-          setCurrentResearchTarget("Research complete");
-          setProgress(100);
-          setIsComplete(true);
+          completeResearch(skill);
           break;
         case "error":
           console.error("[research-loading] Pipeline error:", data.message);
           if (isMounted) {
             isDoneRef.current = true;
+            setProgress(100);
             setIsComplete(true);
             setCurrentResearchTarget(data.message || "Research failed");
           }
@@ -110,6 +120,20 @@ function ResearchLoadingContent() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let gotDoneEvent = false;
+
+        const flushChunk = (chunk: string) => {
+          if (!chunk.startsWith("data: ")) return;
+          try {
+            const parsed = JSON.parse(chunk.slice(6));
+            if (parsed.type === "done") {
+              gotDoneEvent = true;
+            }
+            handleEvent(parsed);
+          } catch {
+            // Ignore malformed SSE chunks.
+          }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -120,16 +144,42 @@ function ResearchLoadingContent() {
           buffer = chunks.pop() || "";
 
           for (const chunk of chunks) {
-            if (!chunk.startsWith("data: ")) continue;
-            try {
-              handleEvent(JSON.parse(chunk.slice(6)));
-            } catch {
-              // Ignore malformed SSE chunks.
-            }
+            flushChunk(chunk);
           }
+        }
+
+        buffer += decoder.decode();
+        const trailingChunks = buffer.split("\n\n").filter(Boolean);
+        for (const chunk of trailingChunks) {
+          flushChunk(chunk);
+        }
+
+        if (!isMounted || isDoneRef.current) return;
+
+        if (!seenEventRef.current) {
+          setCurrentResearchTarget("Research stream did not start. Please try again.");
+          setProgress(100);
+          setIsComplete(true);
+          return;
+        }
+
+        if (!gotDoneEvent) {
+          const modelJson = sessionStorage.getItem("skillModelJson");
+          if (modelJson) {
+            completeResearch(skill);
+            return;
+          }
+          setCurrentResearchTarget("Research stopped before finishing. Please try again.");
+          setProgress(100);
+          setIsComplete(true);
         }
       } catch (error) {
         console.error("[research-loading] SSE error:", error);
+        if (isMounted && !isDoneRef.current) {
+          setCurrentResearchTarget("Research failed to load. Please try again.");
+          setProgress(100);
+          setIsComplete(true);
+        }
       }
     };
 

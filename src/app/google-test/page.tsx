@@ -3,6 +3,8 @@
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useState } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function GoogleTestPage() {
   const { data: session, status } = useSession();
   const [docUrl, setDocUrl] = useState<string | null>(null);

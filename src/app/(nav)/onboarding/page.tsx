@@ -2,10 +2,11 @@
 
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const levels = ["beginner", "intermediate", "advanced"] as const;
 type Level = (typeof levels)[number];
+const TEMP_DISABLE_RESEARCH = true;
 
 export default function OnboardingPage() {
   const { data: session, status } = useSession();
@@ -17,6 +18,19 @@ export default function OnboardingPage() {
   const [constraints, setConstraints] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextSkill = params.get("skill");
+    const nextGoal = params.get("goal");
+    const nextLevel = params.get("level");
+
+    if (nextSkill) setSkill(nextSkill);
+    if (nextGoal) setGoal(nextGoal);
+    if (nextLevel && levels.includes(nextLevel as Level)) {
+      setLevel(nextLevel as Level);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skill.trim()) return;
@@ -24,7 +38,8 @@ export default function OnboardingPage() {
     if (status !== "authenticated") {
       setIsSigningIn(true);
       await signIn("google", {
-        callbackUrl: `/onboarding?skill=${encodeURIComponent(skill)}&goal=${encodeURIComponent(goal)}&level=${level}`,
+        callbackUrl:
+          `/onboarding?skill=${encodeURIComponent(skill)}&goal=${encodeURIComponent(goal)}&level=${level}`,
       });
       return;
     }
@@ -36,18 +51,62 @@ export default function OnboardingPage() {
       constraints: constraints.trim(),
     };
     sessionStorage.setItem("researchIntake", JSON.stringify(intake));
+
+    if (TEMP_DISABLE_RESEARCH) {
+      const mockSkillModel = {
+        metadata: {
+          skill: intake.skill,
+          goal: intake.goal,
+          level: intake.level,
+        },
+        sessionPlan: {
+          primaryFocus: `Core ${intake.skill} fundamentals`,
+          secondaryFocus: `Build consistency toward: ${intake.goal}`,
+          warmupActivity: `Spend 2 minutes resetting your form for ${intake.skill}`,
+          keyCheckpoints: [
+            "Keep movements controlled and repeatable",
+            "Focus on one correction at a time",
+            "End the session with one measurable improvement",
+          ],
+          successIndicators: [
+            "Form is more consistent than at the start",
+            "You can describe the main correction in plain language",
+          ],
+        },
+      };
+
+      sessionStorage.setItem("skillModelJson", JSON.stringify(mockSkillModel));
+      sessionStorage.setItem(
+        "systemPrompt",
+        `You are a real-time coaching assistant helping the user practice ${intake.skill}. Give concise, specific feedback.`,
+      );
+      sessionStorage.setItem(
+        "researchWorkspace",
+        JSON.stringify({
+          docUrl: null,
+          rootFolderUrl: null,
+        }),
+      );
+      router.push(`/dashboard?skill=${encodeURIComponent(intake.skill)}`);
+      return;
+    }
+
     router.push(`/research-loading?skill=${encodeURIComponent(skill.trim())}`);
   };
 
   return (
-    <div className="page">
-      <h1 className="page__title page__title--sm">Set your quest</h1>
-      <p className="page__lead">
-        Tell the system what you want to learn. It will research it and prepare
-        your coaching session.
-      </p>
-
+    <div className="page page--onboarding">
       <form className="form-card" onSubmit={handleSubmit}>
+        <div style={{ textAlign: "center", marginBottom: "0.25rem" }}>
+          <h1 className="page__title page__title--sm" style={{ marginBottom: "0.35rem" }}>
+            Set your quest
+          </h1>
+          <p className="page__lead" style={{ margin: "0 auto", maxWidth: "28rem" }}>
+            Tell the system what you are building toward. Research runs before
+            the live session so your coaching is grounded in the actual skill.
+          </p>
+        </div>
+
         <label className="field">
           <span className="field__label">Skill</span>
           <input
@@ -107,8 +166,8 @@ export default function OnboardingPage() {
         </div>
 
         {status !== "authenticated" && (
-          <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)" }}>
-            Google Workspace sign-in required — research notes are saved to your
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center" }}>
+            Google Workspace sign-in required. Research notes are saved to your
             Drive.
           </p>
         )}

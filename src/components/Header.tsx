@@ -6,18 +6,9 @@ export default function Header() {
   const { data: session } = useSession();
   const [isSigningIn, setIsSigningIn] = useState(false);
 
-  const handleGoogleSignIn = async () => {
-    try {
-      setIsSigningIn(true);
-      const result = await signIn("google", { callbackUrl: "/" });
-      if (result?.url) {
-        window.location.href = result.url;
-        return;
-      }
-      window.location.href = "/api/auth/signin/google?callbackUrl=%2F";
-    } catch {
-      window.location.href = "/api/auth/signin/google?callbackUrl=%2F";
-    }
+  const handleGoogleSignIn = () => {
+    setIsSigningIn(true);
+    void signIn("google", { callbackUrl: "/" });
   };
   
   return (

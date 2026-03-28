@@ -23,6 +23,7 @@ import type {
 import { assembleSystemPrompt } from "../../../../lib/session-context";
 
 export const runtime = "nodejs";
+const TEMP_DISABLE_RESEARCH = true;
 
 function formatDurationMs(startedAt: number): string {
   return `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -138,6 +139,43 @@ export async function POST(req: NextRequest) {
       };
 
       try {
+        if (TEMP_DISABLE_RESEARCH) {
+          const mockSkillModel = {
+            metadata: {
+              skill: intake.skill,
+              goal: intake.goal,
+              level: intake.level,
+            },
+            sessionPlan: {
+              primaryFocus: `Core ${intake.skill} fundamentals`,
+              secondaryFocus: `Build consistency toward: ${intake.goal}`,
+              warmupActivity: `Spend 2 minutes resetting your form for ${intake.skill}`,
+              keyCheckpoints: [
+                "Keep movements controlled and repeatable",
+                "Focus on one correction at a time",
+                "End the session with one measurable improvement",
+              ],
+              successIndicators: [
+                "Form is more consistent than at the start",
+                "You can describe the main correction in plain language",
+              ],
+            },
+          };
+          const systemPrompt = assembleSystemPrompt(mockSkillModel as any, null);
+
+          await emit("status", { message: `Skipping research for "${intake.skill}"...` });
+          await emit("done", {
+            skillModel: mockSkillModel,
+            skillModelJson: JSON.stringify(mockSkillModel),
+            systemPrompt,
+            docUrl: null,
+            rootFolderUrl: null,
+            totalDuration: "0.0s",
+          });
+          controller.close();
+          return;
+        }
+
         if (process.env.GLITCH_USE_DEMO_DOC === "true") {
           const { default: demoDoc } = await import("../../../../data/cooking-skill-demo.json");
           await emit("status", { message: "Loading demo coaching plan..." });
