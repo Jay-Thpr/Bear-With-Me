@@ -34,7 +34,7 @@ A live video coaching session where the AI watches you, gives escalating feedbac
 - OAuth login flow — service account for demo speed
 - Multi-user / social features — single user coaching only
 - Real-time < 1 FPS video — Live API constraint, demo with cooking accordingly
-- Sessions > 10 minutes — Live API session limit; structure as focused rounds
+- Sessions > 10 minutes — no hard limit; Gemini Live supports unlimited session length via context compression/sliding window (confirmed: https://ai.google.dev/gemini-api/docs/live-api/session-management)
 
 ## Context
 
@@ -49,7 +49,7 @@ A live video coaching session where the AI watches you, gives escalating feedbac
 
 - **Timeline:** ~24 hours — coarse phases, parallel execution, no time for iteration
 - **Video:** Gemini Live processes at 1 FPS — fast movements unreliable; demo activity chosen accordingly
-- **Session length:** Gemini Live ~10 minutes max per session
+- **Session length:** No hard limit — Gemini Live supports unlimited length via context compression/sliding window
 - **Auth:** Google service account only — no OAuth redirect flow
 - **Annotation latency:** Gemini image gen takes 3-8s per annotated frame
 - **Stack:** Next.js 14 (App Router) + Tailwind + TypeScript + Node.js WebSocket server

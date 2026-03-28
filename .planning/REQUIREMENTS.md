@@ -76,7 +76,7 @@
 | Mobile app | Web-first; hackathon constraint |
 | Multi-user / social | Single user coaching engine only |
 | Real-time annotation overlay on live feed | Latency too high (3-8s); show as a separate "coaching moment" instead |
-| Sessions > 10 minutes | Gemini Live API constraint |
+| Sessions > 10 minutes | Not actually a constraint — Gemini Live supports unlimited length via context compression/sliding window |
 | Custom video recording / playback | Out of scope; Docs stores annotated stills only |
 
 ---
