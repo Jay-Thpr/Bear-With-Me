@@ -36,6 +36,44 @@ function LiveCoachingContent() {
   
   const [showVisualAid, setShowVisualAid] = useState<"none" | "annotated" | "video">("none");
 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    async function setupCamera() {
+      try {
+        if (!camOn) {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          if (videoRef.current) videoRef.current.srcObject = null;
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: "user" }, 
+          audio: false 
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Error accessing camera:", err);
+      }
+    }
+    
+    setupCamera();
+
+    return () => {
+      // We don't want to stop the stream on every re-render unless component unmounts
+      // The dependency array handles camOn changes, so this cleanup is mainly for unmount.
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [camOn]);
   // Format time
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -112,14 +150,35 @@ function LiveCoachingContent() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex gap-4 min-h-0 relative">
+      <main className="flex-[1] flex min-h-0 relative w-full overflow-hidden">
         
         {/* Left: Video Feed */}
-        <div className="flex-[3] relative rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800 shrink-0">
-          <div className={clsx("absolute inset-0 bg-[url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=1200&auto=format&fit=crop')] bg-cover bg-center transition-all duration-700", { "grayscale opacity-50": !camOn, "blur-sm": isPaused })} />
+        <motion.div 
+          layout
+          initial={false}
+          animate={{ width: showVisualAid === "none" ? "100%" : "60%" }}
+          transition={{ type: "spring", bounce: 0, duration: 0.7 }}
+          className="relative h-full rounded-2xl overflow-hidden shrink-0 bg-zinc-900 border border-zinc-800 z-10"
+        >
+          <div className="absolute inset-0 bg-zinc-950 flex items-center justify-center">
+            {camOn ? (
+              <video 
+                ref={videoRef}
+                autoPlay 
+                playsInline 
+                muted
+                className={clsx("w-full h-full object-cover transition-all duration-700", isPaused && "blur-md scale-105")}
+              />
+            ) : (
+              <div className="text-zinc-600 flex flex-col items-center">
+                <VideoOff className="w-16 h-16 mb-4 opacity-50" />
+                <p>Camera is off</p>
+              </div>
+            )}
+          </div>
           
           {/* Waveform indicator when AI speaks */}
-          <div className="absolute top-6 right-6 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full flex items-center gap-2 border border-white/10">
+          <div className="absolute top-6 right-6 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full flex items-center gap-2 border border-white/10 shadow-2xl">
             <span className="text-xs font-semibold text-zinc-300 tracking-wider">COACH ACTIVE</span>
             <div className="flex gap-1 items-end h-4">
                {[1,2,3,4,5].map(i => (
@@ -132,89 +191,83 @@ function LiveCoachingContent() {
                ))}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Right: Coach Panel */}
-        <div className="flex-[2] flex flex-col gap-4 min-w-[300px] shrink-0">
-          
-          {/* Section A - Current Instruction */}
-          <AnimatePresence mode="wait">
+        <AnimatePresence>
+          {showVisualAid !== "none" && (
             <motion.div 
-              key={currentMessage}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className={clsx("p-5 rounded-2xl border flex items-start gap-4 shadow-xl shrink-0 transition-colors duration-500", getTierStyles(currentTier))}
+              layout
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "40%", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", bounce: 0, duration: 0.7 }}
+              className="relative h-full shrink-0 flex flex-col gap-4 pl-4 overflow-hidden z-0"
             >
-              {getTierIcon(currentTier)}
-              <div className="flex-1">
-                <p className="text-sm font-medium leading-relaxed">{currentMessage}</p>
-                {currentTier === 3 && <div className="mt-2 text-xs font-bold uppercase tracking-wider opacity-80 animate-pulse">See visual below ↓</div>}
-                {currentTier === 4 && <div className="mt-2 text-xs font-bold uppercase tracking-wider opacity-80 animate-pulse">Watch this technique ↓</div>}
+              <div className="w-full flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                {/* Section A - Current Instruction */}
+                <div className={clsx("p-5 rounded-2xl border flex items-start gap-4 shadow-xl shrink-0 transition-colors duration-500", getTierStyles(currentTier))}>
+                  {getTierIcon(currentTier)}
+                  <div className="flex-1">
+                    <p className="text-sm font-medium leading-relaxed">{currentMessage}</p>
+                    {currentTier === 3 && <div className="mt-2 text-xs font-bold uppercase tracking-wider opacity-80 animate-pulse">See visual below ↓</div>}
+                    {currentTier === 4 && <div className="mt-2 text-xs font-bold uppercase tracking-wider opacity-80 animate-pulse">Watch this technique ↓</div>}
+                  </div>
+                </div>
+
+                {/* Section B - Visual Aid Area */}
+                <div className="min-h-[250px] bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden relative flex flex-col shrink-0 shadow-2xl">
+                  <div className="absolute top-3 left-4 text-xs font-semibold text-zinc-500 uppercase tracking-widest z-10 bg-black/50 px-2 py-1 rounded backdrop-blur-md">Visual Aid</div>
+                  
+                  {showVisualAid === "annotated" && (
+                     <div className="flex-1 flex flex-col p-2 pt-12">
+                       <div className="flex-1 flex gap-2">
+                         <div className="flex-1 bg-zinc-800 rounded-xl relative overflow-hidden group">
+                           <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400&auto=format&fit=crop')] bg-cover" />
+                           <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 text-[10px] text-white rounded">You</div>
+                         </div>
+                         <div className="flex-1 bg-zinc-800 rounded-xl relative overflow-hidden ring-2 ring-emerald-500/50">
+                            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400&auto=format&fit=crop')] bg-cover" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="w-24 h-24 border-4 border-amber-500 rounded-full animate-pulse" />
+                              <svg className="absolute w-12 h-12 text-amber-500 translate-x-8 -translate-y-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                            </div>
+                            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 text-[10px] text-emerald-400 rounded">Correction</div>
+                         </div>
+                       </div>
+                       <div className="mt-3 flex gap-3 text-sm px-2">
+                         <button onClick={() => setShowVisualAid("none")} className="flex-1 bg-zinc-800 hover:bg-zinc-700 py-3 rounded-lg font-medium transition-colors">Got it</button>
+                       </div>
+                     </div>
+                  )}
+                </div>
+
+                {/* Section C - Session Log */}
+                <div className="flex-[1] bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col overflow-hidden min-h-[150px] shadow-2xl">
+                  <div className="px-4 py-3 border-b border-zinc-800 text-xs font-semibold text-zinc-500 uppercase tracking-widest bg-zinc-950/50">
+                    Session Log
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                     {logs.map((log) => (
+                       <div key={log.id} className="flex gap-3 text-sm">
+                         <div className="text-zinc-500 font-mono text-xs w-10 shrink-0">{log.timeText}</div>
+                         <div className="mt-1 shrink-0">
+                           {log.tier === 1 && <span className="flex w-2 h-2 rounded-full bg-emerald-500" />}
+                           {log.tier === 2 && <span className="flex w-2 h-2 rounded-full bg-zinc-400" />}
+                           {log.tier === 3 && <span className="flex w-2 h-2 rounded-full bg-amber-500" />}
+                           {log.tier === 4 && <span className="flex w-2 h-2 rounded-full bg-purple-500" />}
+                         </div>
+                         <div className="text-zinc-300 leading-snug">{log.message}</div>
+                       </div>
+                     ))}
+                     <div className="h-4" /> {/* spacing */}
+                  </div>
+                </div>
+
               </div>
             </motion.div>
-          </AnimatePresence>
-
-          {/* Section B - Visual Aid Area */}
-          <div className="flex-[1] min-h-[250px] bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden relative flex flex-col shrink-0">
-            <div className="absolute top-3 left-4 text-xs font-semibold text-zinc-500 uppercase tracking-widest z-10 bg-black/50 px-2 py-1 rounded backdrop-blur-md">Visual Aid</div>
-            
-            {showVisualAid === "none" && (
-               <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 p-6 text-center">
-                 <Target className="w-12 h-12 mb-4 opacity-20" />
-                 <p className="text-sm">Session Goal: <span className="text-zinc-400 font-medium">Rocking cut technique</span></p>
-                 <p className="text-xs opacity-60 mt-2 max-w-[200px]">Visuals will appear here when the coach corrects form.</p>
-               </div>
-            )}
-
-            {showVisualAid === "annotated" && (
-               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col p-2 pt-12">
-                 <div className="flex-1 flex gap-2">
-                   <div className="flex-1 bg-zinc-800 rounded-xl relative overflow-hidden group">
-                     {/* Original */}
-                     <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400&auto=format&fit=crop')] bg-cover" />
-                     <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 text-[10px] text-white rounded">You</div>
-                   </div>
-                   <div className="flex-1 bg-zinc-800 rounded-xl relative overflow-hidden ring-2 ring-emerald-500/50">
-                      {/* Annotated */}
-                      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400&auto=format&fit=crop')] bg-cover" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-24 h-24 border-4 border-amber-500 rounded-full animate-pulse" />
-                        <svg className="absolute w-12 h-12 text-amber-500 translate-x-8 -translate-y-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-                      </div>
-                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 text-[10px] text-emerald-400 rounded">Correction</div>
-                   </div>
-                 </div>
-                 <div className="mt-3 flex gap-3 text-sm px-2">
-                   <button onClick={() => setShowVisualAid("none")} className="flex-1 bg-zinc-800 hover:bg-zinc-700 py-3 rounded-lg font-medium transition-colors">Got it</button>
-                 </div>
-               </motion.div>
-            )}
-          </div>
-
-          {/* Section C - Session Log */}
-          <div className="flex-[1] bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col overflow-hidden min-h-[150px]">
-            <div className="px-4 py-3 border-b border-zinc-800 text-xs font-semibold text-zinc-500 uppercase tracking-widest bg-zinc-950/50">
-              Session Log
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-               {logs.map((log) => (
-                 <div key={log.id} className="flex gap-3 text-sm">
-                   <div className="text-zinc-500 font-mono text-xs w-10 shrink-0">{log.timeText}</div>
-                   <div className="mt-1 shrink-0">
-                     {log.tier === 1 && <span className="flex w-2 h-2 rounded-full bg-emerald-500" />}
-                     {log.tier === 2 && <span className="flex w-2 h-2 rounded-full bg-zinc-400" />}
-                     {log.tier === 3 && <span className="flex w-2 h-2 rounded-full bg-amber-500" />}
-                     {log.tier === 4 && <span className="flex w-2 h-2 rounded-full bg-purple-500" />}
-                   </div>
-                   <div className="text-zinc-300 leading-snug">{log.message}</div>
-                 </div>
-               ))}
-               <div className="h-4" /> {/* spacing */}
-            </div>
-          </div>
-
-        </div>
+          )}
+        </AnimatePresence>
       </main>
 
       {/* Bottom Control Bar */}
