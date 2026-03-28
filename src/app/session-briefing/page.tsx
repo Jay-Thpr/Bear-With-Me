@@ -17,15 +17,32 @@ function SessionBriefingContent() {
   const [isEditingGoal, setIsEditingGoal] = useState(false);
 
   useEffect(() => {
-    // In real app, we fetch the User Model via API
-    // Mocking returning user if skill is "Knife Skills" or if we came from Skill Selection directly without research
-    const isMockReturning = skill.toLowerCase().includes("knife");
-    setIsReturningUser(isMockReturning);
-    if (isMockReturning) {
-      setGoal("Increase dice cut speed while maintaining uniform size and wrist pivot");
-    } else {
-      setGoal("Learn the foundational mechanics and establish safe muscle memory");
+    // Read skill model from sessionStorage written by research-loading
+    try {
+      const skillModelJson = sessionStorage.getItem("skillModelJson");
+      if (skillModelJson) {
+        const skillModel = JSON.parse(skillModelJson);
+        const derivedGoal =
+          skillModel.sessionPlan?.primaryFocus ||
+          skillModel.metadata?.goal ||
+          null;
+        if (derivedGoal) setGoal(derivedGoal);
+      }
+    } catch {
+      // Fall through to defaults
     }
+
+    // Fall through defaults if goal still empty
+    setGoal(prev => {
+      if (prev) return prev;
+      const isMockReturning = skill.toLowerCase().includes("knife");
+      return isMockReturning
+        ? "Increase dice cut speed while maintaining uniform size and wrist pivot"
+        : "Learn the foundational mechanics and establish safe muscle memory";
+    });
+
+    const isReturning = localStorage.getItem("isReturningUser") === "true";
+    setIsReturningUser(isReturning);
   }, [skill]);
 
   const handleStartLive = () => {

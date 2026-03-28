@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import Header from "@/components/Header";
+import AuthProvider from "@/components/AuthProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -20,17 +22,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} dark`}>
       <body className="bg-zinc-950 font-sans antialiased text-zinc-50 flex flex-col min-h-screen">
-        <header className="w-full p-6 flex justify-between items-center absolute top-0 z-10">
-          <div className="font-bold text-xl tracking-tighter flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-emerald-500 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-zinc-900" />
-            </div>
-            Glitch
-          </div>
-        </header>
-        <main className="flex-1 flex flex-col">
-          {children}
-        </main>
+        <AuthProvider>
+          <Header />
+          <main className="flex-1 flex flex-col pt-[88px]">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

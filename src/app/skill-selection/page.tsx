@@ -231,6 +231,18 @@ export default function SkillSelection() {
         </div>
       </div>
     
+      {/* Hidden demo toggle for returning-user mode */}
+      <button
+        onClick={() => {
+          const isReturning = localStorage.getItem("isReturningUser") === "true";
+          localStorage.setItem("isReturningUser", isReturning ? "false" : "true");
+          alert(`Returning user mode: ${isReturning ? "OFF" : "ON"}`);
+        }}
+        className="text-xs text-zinc-800 absolute bottom-4 right-4"
+      >
+        toggle
+      </button>
+
       {/* Selection indicators */}
       <div className="flex justify-center gap-3 mb-10">
         {PRESET_SKILLS.map((_, i) => (

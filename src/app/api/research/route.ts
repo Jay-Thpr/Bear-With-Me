@@ -1,78 +1,176 @@
-import { NextRequest, NextResponse } from "next/server";
-import { findTutorialUrls, analyzeSkillVideos, synthesizeSkillDoc } from "../../../../lib/gemini";
-import { createSkillDoc } from "../../../../lib/google-docs";
-import demoDoc from "../../../../data/cooking-skill-demo.json";
+import { NextRequest } from "next/server";
+import {
+  generateSkillIllustration,
+} from "../../../../lib/gemini";
+import { assembleSystemPrompt } from "../../../../lib/session-context";
+import { getUserOAuthClient } from "../../../../lib/getUserAuth";
+import {
+  buildResearchBrief,
+  conductStructuredVideoResearch,
+  conductStructuredWebResearch,
+  generateClarificationQuestions,
+  mapResearchModelToSkillModel,
+  parseLearnerProfile,
+  persistResearchWorkspace,
+  synthesizeResearchModel,
+} from "../../../../lib/research";
+import type {
+  ClarificationAnswer,
+  ResearchIntakeInput,
+  SkillLevel,
+} from "../../../../lib/research-types";
+
+export const runtime = "nodejs"; // Required for SSE
 
 export async function POST(req: NextRequest) {
-  // Parse and validate request body
-  let skill: string;
+  let intake: ResearchIntakeInput;
   try {
     const body = await req.json();
-    skill = body?.skill?.trim();
+    const skill = body?.skill?.trim() || "";
+    intake = {
+      skill,
+      goal: body?.goal?.trim() || `Learn ${skill}`,
+      level: (body?.level || "beginner") as SkillLevel,
+      preferences: body?.preferences?.trim() || undefined,
+      constraints: body?.constraints?.trim() || undefined,
+      environment: body?.environment?.trim() || undefined,
+      equipment: Array.isArray(body?.equipment)
+        ? body.equipment.map((item: unknown) => String(item))
+        : undefined,
+    };
   } catch {
-    return NextResponse.json({ error: "skill required" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "invalid body" }), { status: 400 });
   }
 
-  if (!skill) {
-    return NextResponse.json({ error: "skill required" }, { status: 400 });
+  if (!intake.skill) {
+    return new Response(JSON.stringify({ error: "skill required" }), { status: 400 });
   }
 
-  // Demo fallback mode — skip Gemini pipeline, return pre-computed cooking doc
-  // Activate by setting GLITCH_USE_DEMO_DOC=true in .env.local
-  // TODO: Remove demo mode once GEMINI_API_KEY and Google service account are configured
-  if (process.env.GLITCH_USE_DEMO_DOC === "true") {
-    console.log("[research] Demo mode: returning pre-computed cooking skill doc");
-    const demoContent = JSON.stringify(demoDoc, null, 2);
-    try {
-      // TODO: createSkillDoc will write to real Google Docs once GOOGLE_SERVICE_ACCOUNT_KEY is set
-      const docUrl = await createSkillDoc(`${skill} — Skill Model (Demo)`, demoContent);
-      return NextResponse.json({ success: true, docUrl, skillDoc: demoContent });
-    } catch (err) {
-      console.error("[research] Demo mode Docs write failed:", err);
-      // Return demo content even if Docs write fails — still useful for dev
-      return NextResponse.json({
-        success: true,
-        docUrl: null,
-        skillDoc: demoContent,
-        warning: "Demo mode active — Docs write failed, returning JSON directly",
-      });
-    }
-  }
+  // SSE stream
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (type: string, data: object | string) => {
+        const payload = typeof data === "string" ? { message: data } : data;
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`)
+        );
+      };
 
-  // Full pipeline: three-step Gemini flow → Google Docs write
-  try {
-    // Step 1: Find YouTube tutorial URLs via search grounding
-    // TODO: Requires GEMINI_API_KEY in .env.local — returns mock data until then
-    console.log(`[research] Step 1: Finding tutorials for "${skill}"`);
-    const videoUrls = await findTutorialUrls(skill);
+      try {
+        // Demo fallback
+        if (process.env.GLITCH_USE_DEMO_DOC === "true") {
+          const { default: demoDoc } = await import("../../../../data/cooking-skill-demo.json");
+          emit("status", { message: "Loading demo coaching plan..." });
+          await new Promise(r => setTimeout(r, 800));
+          emit("done", { skillModel: demoDoc, docUrl: null, systemPrompt: "" });
+          controller.close();
+          return;
+        }
 
-    // Step 2: Analyze video content for coaching data
-    // TODO: Requires GEMINI_API_KEY in .env.local — returns mock data until then
-    console.log(`[research] Step 2: Analyzing ${videoUrls.length} videos`);
-    const rawAnalysis = await analyzeSkillVideos(skill, videoUrls);
+        emit("status", { message: `🔍 Starting research for "${intake.skill}"...` });
 
-    // Step 3: Synthesize into structured skill document
-    // TODO: Requires GEMINI_API_KEY in .env.local — returns mock data until then
-    console.log(`[research] Step 3: Synthesizing skill document`);
-    const skillDoc = await synthesizeSkillDoc(skill, rawAnalysis);
+        emit("status", { message: "🧾 Parsing learner profile..." });
+        const learnerProfile = await parseLearnerProfile(intake);
 
-    // Step 4: Write to Google Docs (skipped gracefully if no credentials)
-    console.log(`[research] Step 4: Writing to Google Docs`);
-    let docUrl: string | null = null;
-    try {
-      docUrl = await createSkillDoc(`${skill} — Skill Model`, skillDoc);
-    } catch (err: any) {
-      if (err?.message !== "NO_CREDENTIALS") throw err;
-      console.log("[research] No Google credentials — skipping Docs write");
-    }
+        const clarificationAnswers = Array.isArray((intake as any).clarificationAnswers)
+          ? ((intake as any).clarificationAnswers as ClarificationAnswer[])
+          : [];
 
-    console.log(`[research] Complete. Doc URL: ${docUrl}`);
-    return NextResponse.json({ success: true, docUrl, skillDoc });
-  } catch (err) {
-    console.error("[research] Pipeline error:", err);
-    return NextResponse.json(
-      { error: "Research pipeline failed" },
-      { status: 500 }
-    );
-  }
+        emit("status", { message: "❓ Checking whether clarification is needed..." });
+        const clarificationQuestions = await generateClarificationQuestions(learnerProfile);
+        if (clarificationQuestions.length > 0 && clarificationAnswers.length === 0) {
+          emit("clarification_required", { questions: clarificationQuestions });
+          emit("status", { message: `❓ ${clarificationQuestions.length} clarification questions identified` });
+          controller.close();
+          return;
+        } else {
+          emit("status", { message: "✅ No clarification questions needed" });
+        }
+
+        emit("status", { message: "🗺️ Building research brief..." });
+        const researchBrief = await buildResearchBrief(learnerProfile, clarificationAnswers);
+
+        const [illustrationUrl, webResearch, videoResearch] = await Promise.all([
+          generateSkillIllustration(intake.skill).then(url => {
+            emit("status", { message: "🎨 Skill illustration generated" });
+            emit("illustration", { url });
+            return url;
+          }),
+          conductStructuredWebResearch(researchBrief).then((result) => {
+            const firstFinding = result.findings[0];
+            if (firstFinding) {
+              emit("status", {
+                message: `✅ Web research captured ${firstFinding.properForm.slice(0, 3).length} proper-form signals`,
+              });
+            }
+            return result;
+          }),
+          conductStructuredVideoResearch(researchBrief, (title) =>
+            emit("status", { message: `✅ Analyzed: "${title}"` })
+          ).then((result) => {
+            emit("status", { message: `📺 Analyzed ${result.videos.length} tutorial videos` });
+            return result;
+          }),
+        ]);
+
+        emit("status", { message: "🧠 Synthesizing research model..." });
+        const researchModel = await synthesizeResearchModel(
+          researchBrief,
+          webResearch.findings,
+          videoResearch.videos
+        );
+        const skillModel = mapResearchModelToSkillModel(researchModel, illustrationUrl);
+        emit("status", { message: "✅ Coaching plan ready" });
+
+        emit("status", { message: "📄 Saving research workspace..." });
+        let docUrl: string | null = null;
+        let progressDocUrl: string | null = null;
+        let rootFolderUrl: string | null = null;
+        try {
+          const oauthClient = await getUserOAuthClient();
+          const workspace = await persistResearchWorkspace(
+            researchModel,
+            clarificationQuestions,
+            oauthClient
+          );
+          docUrl = workspace.researchDocUrl;
+          progressDocUrl = workspace.progressDocUrl;
+          rootFolderUrl = workspace.rootFolderUrl;
+          emit("status", { message: "✅ Saved research and progress docs to Drive" });
+        } catch (err: any) {
+          if (err?.message !== "NO_CREDENTIALS") {
+            console.error("[research] Docs write failed:", err);
+          }
+        }
+
+        // ── ASSEMBLE SYSTEM PROMPT ──
+        const systemPrompt = assembleSystemPrompt(skillModel, null);
+
+        emit("done", {
+          skillModel,
+          researchModel,
+          skillModelJson: JSON.stringify(skillModel),
+          systemPrompt,
+          docUrl,
+          progressDocUrl,
+          rootFolderUrl,
+        });
+
+      } catch (err) {
+        console.error("[research] Pipeline error:", err);
+        emit("error", { message: "Research pipeline failed" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
 }

@@ -31,6 +31,16 @@ export function getGoogleAuth() {
     scopes: [
       "https://www.googleapis.com/auth/documents",
       "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/calendar",
     ],
   });
+}
+
+/**                                    
+ * Use this in API routes that run during a user session.
+ * Pass the OAuth client if available, otherwise falls back to service account.                                   
+ */                                                                                                               
+export function buildAuth(oauthClient: any | null) {                                                              
+  if (oauthClient) return oauthClient;                                                                            
+  return getGoogleAuth(); // service account fallback
 }

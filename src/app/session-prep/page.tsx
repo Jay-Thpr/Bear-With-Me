@@ -5,7 +5,6 @@ import { PenTool, CheckCircle2, PlaySquare, Calendar, Sparkles, Wand2, RefreshCw
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
-import clsx from "clsx";
 
 function SessionPrepContent() {
   const router = useRouter();
@@ -15,6 +14,11 @@ function SessionPrepContent() {
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [goal, setGoal] = useState("");
   const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [level, setLevel] = useState<"beginner" | "intermediate" | "advanced">("beginner");
+  const [preferences, setPreferences] = useState("Visual feedback, calm tone, short corrections");
+  const [constraints, setConstraints] = useState("10 minute practice block");
+  const [environment, setEnvironment] = useState("Kitchen counter with overhead lighting");
+  const [equipment, setEquipment] = useState("Chef's knife, cutting board");
 
   useEffect(() => {
     // In real app, we'd fetch the user's progress model from the backend.
@@ -29,7 +33,23 @@ function SessionPrepContent() {
   }, []);
 
   const handleStart = () => {
-    router.push(`/research-loading?skill=${encodeURIComponent(skill)}`);
+    const isReturning = localStorage.getItem("isReturningUser") === "true";
+    sessionStorage.setItem("sessionNumber", isReturning ? "7" : "1");
+    sessionStorage.setItem("researchIntake", JSON.stringify({
+      skill,
+      goal,
+      level,
+      preferences,
+      constraints,
+      environment,
+      equipment: equipment
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    }));
+    sessionStorage.removeItem("researchClarificationAnswers");
+    const params = new URLSearchParams({ skill });
+    router.push(`/research-loading?${params.toString()}`);
   };
 
   return (
@@ -108,23 +128,61 @@ function SessionPrepContent() {
 
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <div className="bg-zinc-950/50 border border-zinc-800 rounded-2xl p-6">
-              <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-widest mb-4">Your Profile Details</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-widest mb-4">Research Intake</h2>
+              <div className="space-y-4">
                 <div>
-                  <div className="text-xs text-zinc-600 mb-1">Current Level</div>
-                  <div className="text-white font-medium">{isReturningUser ? "Intermediate (Level 3)" : "Beginner (Assessing)"}</div>
+                  <div className="text-xs text-zinc-600 mb-2">Current Level</div>
+                  <div className="flex gap-2">
+                    {(["beginner", "intermediate", "advanced"] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setLevel(option)}
+                        className={`rounded-lg border px-3 py-2 text-sm capitalize transition-colors ${
+                          level === option
+                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
+                            : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs text-zinc-600 mb-1">Learning Style</div>
-                  <div className="text-white font-medium">{isReturningUser ? "Encouraging, Visual-heavy" : "Calibrating..."}</div>
+                  <div className="text-xs text-zinc-600 mb-2">Preferences</div>
+                  <textarea
+                    value={preferences}
+                    onChange={(e) => setPreferences(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
                 </div>
                 <div>
-                  <div className="text-xs text-zinc-600 mb-1">Total Sessions</div>
-                  <div className="text-white font-medium">{isReturningUser ? "6 Completed" : "0 Completed"}</div>
+                  <div className="text-xs text-zinc-600 mb-2">Constraints</div>
+                  <textarea
+                    value={constraints}
+                    onChange={(e) => setConstraints(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
                 </div>
                 <div>
-                  <div className="text-xs text-zinc-600 mb-1">Focus Mode</div>
-                  <div className="text-white font-medium">10-Minute Drill</div>
+                  <div className="text-xs text-zinc-600 mb-2">Practice Environment</div>
+                  <input
+                    value={environment}
+                    onChange={(e) => setEnvironment(e.target.value)}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-600 mb-2">Equipment</div>
+                  <input
+                    value={equipment}
+                    onChange={(e) => setEquipment(e.target.value)}
+                    placeholder="Comma-separated"
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
                 </div>
               </div>
             </div>
