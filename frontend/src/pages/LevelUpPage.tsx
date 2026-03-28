@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import type { SkillOut } from '../api/skills'
-import { Character } from '../components/Character'
 import './Page.css'
+
+/** Plain bear sprite — no volleyball; level-up is shown via pills and unlock copy only. */
+const BEAR_AVATAR_SRC = '/bear-character.png'
 
 type LevelUpState = {
   durationSec?: number
@@ -106,27 +108,46 @@ export function LevelUpPage() {
       </div>
 
       <div className="level-up__compare" aria-label="Avatar before and after level up">
-        <div className="level-up__column">
-          <span className="level-up__column-label">Your hero now</span>
-          <div className="level-up__avatar-card">
-            <Character size="large" />
-            <span className="level-up__lvl-pill">Lv. {prevLevel}</span>
+        <section className="level-up__pane" aria-labelledby="level-up-before-heading">
+          <h2 id="level-up-before-heading" className="level-up__pane-heading">
+            Your hero now
+          </h2>
+          <div className="level-up__figure">
+            <img
+              src={BEAR_AVATAR_SRC}
+              alt=""
+              className="level-up__figure-img"
+              width={120}
+              height={120}
+              draggable={false}
+            />
           </div>
-        </div>
+          <span className="level-up__lvl-pill">Lv. {prevLevel}</span>
+        </section>
 
         <div className="level-up__arrow-wrap" aria-hidden>
           <ArrowRight className="level-up__arrow" strokeWidth={2.5} />
         </div>
 
-        <div className="level-up__column level-up__column--next">
-          <span className="level-up__column-label level-up__column-label--new">
-            {leveledUp ? 'After unlock' : 'Current rank'}
-          </span>
-          <div
-            className={`level-up__avatar-card${leveledUp ? ' level-up__avatar-card--glow' : ''}`}
+        <section className="level-up__pane level-up__pane--after" aria-labelledby="level-up-after-heading">
+          <h2
+            id="level-up-after-heading"
+            className="level-up__pane-heading level-up__pane-heading--new"
           >
-            <div className="level-up__avatar-with-item">
-              <Character size="large" />
+            {leveledUp ? 'After unlock' : 'Current rank'}
+          </h2>
+          <div
+            className={`level-up__figure${leveledUp ? ' level-up__figure--glow' : ''}`}
+          >
+            <div className="level-up__bear-stack">
+              <img
+                src={BEAR_AVATAR_SRC}
+                alt=""
+                className="level-up__figure-img"
+                width={120}
+                height={120}
+                draggable={false}
+              />
               {leveledUp ? (
                 <div className="level-up__new-item" title={`New: ${newItemLabel}`}>
                   <span className="level-up__new-item-emoji" aria-hidden>
@@ -136,16 +157,16 @@ export function LevelUpPage() {
                 </div>
               ) : null}
             </div>
-            <span
-              className={`level-up__lvl-pill${leveledUp ? ' level-up__lvl-pill--up' : ''}`}
-            >
-              Lv. {nextLevel}
-            </span>
           </div>
+          <span
+            className={`level-up__lvl-pill${leveledUp ? ' level-up__lvl-pill--up' : ''}`}
+          >
+            Lv. {nextLevel}
+          </span>
           <p className="level-up__unlock-name">
             {leveledUp ? newItemLabel : `Level ${nextLevel} learner`}
           </p>
-        </div>
+        </section>
       </div>
 
       <section className="level-up__section" aria-labelledby="session-summary-heading">

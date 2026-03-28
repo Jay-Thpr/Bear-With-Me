@@ -36,7 +36,7 @@ export function HomePage() {
           <div className="landing__card">
             <div className="landing__card-highlight" aria-hidden />
             <p className="page__kicker" style={{ marginBottom: '0.75rem' }}>
-              Bear with me
+              Bear With Me
             </p>
             <h1 className="landing__headline">Master any skill</h1>
             <ol className="landing__steps">

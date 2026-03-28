@@ -77,7 +77,7 @@ interface SkillSlot {
   assignedSkillId?: string
 }
 
-/** Template presets; labels are replaced from the API (or "Unassigned") in `presetSlotsWithLabels`. */
+/** Template presets; labels become API skill titles when matched, else the default focus name. */
 const ALL_SKILL_SLOTS: SkillSlot[] = [
   {
     id: 'cooking',
@@ -157,11 +157,83 @@ function normalizePresetCategory(value: unknown): string | null {
   return t || null
 }
 
-/** Match skills to a preset ring (`cooking`, `music`, …); category may differ by case or spacing in DB. */
-function skillForCategory(skills: SkillOut[], category: string) {
-  const want = normalizePresetCategory(category)
-  if (!want) return undefined
-  const matches = skills.filter((s) => normalizePresetCategory(s.context?.category) === want)
+/**
+ * DB / onboarding may use wording that does not exactly match preset `type`
+ * (e.g. "movement" for the basketball ring, "logic" for coding).
+ */
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  [SKILL_TYPES.COOKING]: [
+    'cooking',
+    'cook',
+    'culinary',
+    'kitchen',
+    'food',
+    'chef',
+    'baking',
+    'bake',
+  ],
+  [SKILL_TYPES.BASKETBALL]: [
+    'basketball',
+    'movement',
+    'sports',
+    'sport',
+    'fitness',
+    'athletic',
+    'athletics',
+    'gym',
+    'workout',
+    'exercise',
+  ],
+  [SKILL_TYPES.MUSIC]: ['music', 'audio', 'instrument', 'instruments', 'singing', 'vocal'],
+  [SKILL_TYPES.ART]: [
+    'art',
+    'drawing',
+    'painting',
+    'design',
+    'visual',
+    'creative',
+    'sketch',
+    'illustration',
+  ],
+  [SKILL_TYPES.CODING]: [
+    'coding',
+    'code',
+    'programming',
+    'logic',
+    'development',
+    'software',
+    'engineering',
+    'computer',
+    'computing',
+    'tech',
+    'developer',
+  ],
+  [SKILL_TYPES.PHOTOGRAPHY]: [
+    'photography',
+    'photo',
+    'camera',
+    'imaging',
+    'video',
+    'filming',
+    'film',
+  ],
+}
+
+function skillCategoryMatchesPreset(skillCat: unknown, presetType: string): boolean {
+  const c = normalizePresetCategory(skillCat)
+  if (!c) return false
+  const want = normalizePresetCategory(presetType)
+  if (!want) return false
+  if (c === want) return true
+  const aliases = CATEGORY_ALIASES[presetType]
+  return aliases?.some((a) => normalizePresetCategory(a) === c) ?? false
+}
+
+/** Match skills to a preset ring by stored category (exact or alias). */
+function skillForCategory(skills: SkillOut[], presetType: string) {
+  const matches = skills.filter((s) =>
+    skillCategoryMatchesPreset(s.context?.category, presetType),
+  )
   if (matches.length === 0) return undefined
   return matches.sort(
     (a, b) =>
@@ -187,12 +259,96 @@ function skillForPresetFallback(skills: SkillOut[], category: string): SkillOut 
   if (!want) return undefined
 
   const titleHints: Record<string, string[]> = {
-    cooking: ['cook', 'chef', 'knife', 'bake', 'recipe', 'kitchen', 'culinary', 'food prep'],
-    basketball: ['basketball', 'hoop', 'dribble', 'nba'],
-    music: ['music', 'piano', 'guitar', 'violin', 'sing', 'song'],
-    art: ['art', 'draw', 'paint', 'sketch', 'canvas'],
-    coding: ['code', 'python', 'javascript', 'program', 'dev', 'software'],
-    photography: ['photo', 'camera', 'lens', 'shoot'],
+    cooking: [
+      'cook',
+      'chef',
+      'knife',
+      'bake',
+      'baking',
+      'recipe',
+      'kitchen',
+      'culinary',
+      'food',
+      'saut',
+      'grill',
+      'pastry',
+      'meal',
+    ],
+    basketball: [
+      'basketball',
+      'hoop',
+      'dribble',
+      'nba',
+      'movement',
+      'running',
+      'run',
+      'jog',
+      'soccer',
+      'football',
+      'tennis',
+      'volleyball',
+      'fitness',
+      'workout',
+      'gym',
+      'yoga',
+      'stretch',
+      'athletic',
+    ],
+    music: [
+      'music',
+      'piano',
+      'guitar',
+      'violin',
+      'drum',
+      'sing',
+      'song',
+      'vocal',
+      'audio',
+      'beat',
+      'chord',
+      'scale',
+    ],
+    art: [
+      'art',
+      'draw',
+      'paint',
+      'sketch',
+      'canvas',
+      'illustrat',
+      'design',
+      'sculpt',
+      'creative',
+      'color',
+    ],
+    coding: [
+      'code',
+      'python',
+      'javascript',
+      'typescript',
+      'react',
+      'program',
+      'dev',
+      'software',
+      'algorithm',
+      'debug',
+      'api',
+      'git',
+      'engineer',
+      'comput',
+    ],
+    photography: [
+      'photo',
+      'camera',
+      'lens',
+      'shoot',
+      'exposure',
+      'aperture',
+      'portrait',
+      'lightroom',
+      'film',
+      'video',
+      'cinemat',
+    ],
   }
   const hints = titleHints[want]
   if (!hints?.length) return undefined
@@ -406,7 +562,7 @@ export function SkillSelectPage() {
     return orphans.slice(0, 8).map((s, i) => ({
       id: s.id,
       type: `user-${s.id}`,
-      label: s.title?.trim() ? s.title.trim() : 'Unassigned',
+      label: s.title?.trim() ? s.title.trim() : 'Saved skill',
       icon: 'chef' as IconName,
       position: {
         x: -120 + (i % 4) * 80,
@@ -423,7 +579,7 @@ export function SkillSelectPage() {
       if (slot.type === SKILL_TYPES.MORE) return slot
       const assigned = resolveSkillForPreset(apiSkills, slot.type)
       const label =
-        assigned?.title?.trim() ? assigned.title.trim() : 'Unassigned'
+        assigned?.title?.trim() ? assigned.title.trim() : slot.label
       return {
         ...slot,
         label,
@@ -467,8 +623,7 @@ export function SkillSelectPage() {
           navigate('/dashboard', {
             state: {
               skillId: slot.assignedSkillId,
-              skillTitle:
-                slot.label !== 'Unassigned' ? slot.label : 'Your skill',
+              skillTitle: slot.label,
             },
           })
           return
@@ -511,8 +666,7 @@ export function SkillSelectPage() {
           navigate('/dashboard', {
             state: {
               skillId: slot.assignedSkillId,
-              skillTitle:
-                slot.label !== 'Unassigned' ? slot.label : 'Your skill',
+              skillTitle: slot.label,
             },
           })
           return

@@ -337,17 +337,6 @@ export function SessionPage() {
 
           <div className="session-side-panel session-side-panel--blue">
             <h3 className="session-side-panel__title">Controls &amp; tips</h3>
-            <p className="session-live__security">
-              The long-lived key stays on the server; the UI requests a{' '}
-              <a
-                href="https://ai.google.dev/gemini-api/docs/ephemeral-tokens"
-                target="_blank"
-                rel="noreferrer"
-              >
-                short-lived Live token
-              </a>{' '}
-              from <code>POST /api/live/ephemeral-token</code> before opening the WebSocket.
-            </p>
             <p className="panel__meta" aria-live="polite">
               Coach:{' '}
               {coachPhase === 'off' && 'disconnected'}

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { fetchSkill, fetchSkills, type SkillOut } from '../api/skills'
-import { Character } from '../components/Character'
 import './Page.css'
+
+/** Plain bear sprite (no props). Same art as the in-app Character. */
+const BEAR_AVATAR_SRC = '/bear-character.png'
 
 function formatPracticeTime(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds))
@@ -205,7 +207,14 @@ export function DashboardPage() {
             <div className="journey__avatar-column">
               <div className="journey__avatar-wrap">
                 <div className="journey__avatar-bear">
-                  <Character size="medium" />
+                  <img
+                    src={BEAR_AVATAR_SRC}
+                    alt="Bear mascot"
+                    className="journey__avatar-img"
+                    width={112}
+                    height={112}
+                    draggable={false}
+                  />
                   <div className="journey__level-badge" aria-hidden>
                     {level}
                   </div>
