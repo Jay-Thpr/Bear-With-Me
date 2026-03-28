@@ -27,7 +27,7 @@ def _google_not_configured() -> bool:
     return not (
         settings.google_client_id.strip()
         and settings.google_client_secret.strip()
-        and settings.google_redirect_uri.strip()
+        and settings.google_oauth_redirect_uri.strip()
     )
 
 
@@ -51,10 +51,10 @@ def google_login() -> RedirectResponse:
     if _google_not_configured():
         raise HTTPException(
             status_code=503,
-            detail="Google OAuth is not configured (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI).",
+            detail="Google OAuth is not configured (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and FRONTEND_ORIGIN or GOOGLE_REDIRECT_URI).",
         )
     state = secrets.token_urlsafe(32)
-    redirect_uri = settings.google_redirect_uri.strip()
+    redirect_uri = settings.google_oauth_redirect_uri
     params = {
         "client_id": settings.google_client_id.strip(),
         "redirect_uri": redirect_uri,
@@ -92,7 +92,7 @@ async def google_exchange(
     if not oauth_state or oauth_state != body.state:
         raise HTTPException(status_code=400, detail="Invalid or missing OAuth state.")
 
-    redirect_uri = settings.google_redirect_uri.strip()
+    redirect_uri = settings.google_oauth_redirect_uri
     try:
         token_payload = await exchange_authorization_code(
             code=body.code,

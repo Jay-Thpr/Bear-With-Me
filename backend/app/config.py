@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     # Google OAuth (https://console.cloud.google.com/apis/credentials)
     google_client_id: str = ""
     google_client_secret: str = ""
-    # Must match an authorized redirect URI in the Google OAuth client (SPA callback).
-    google_redirect_uri: str = "http://localhost:5173/auth/callback"
+    # If empty, uses {FRONTEND_ORIGIN}/auth/callback (set FRONTEND_ORIGIN on deploy).
+    # Override only if the callback URL cannot follow that pattern.
+    google_redirect_uri: str = ""
     # Optional service-account JSON for best-effort Google Docs summary exports.
     google_docs_service_account_json: str = ""
     # Optional folder where exported summary docs should live.
@@ -54,6 +55,15 @@ class Settings(BaseSettings):
     rembg_post_process_mask: bool = True
     # 1–255: snap alpha to fully opaque/transparent; 0 = leave rembg’s soft alpha
     rembg_alpha_threshold: int = 200
+
+    @property
+    def google_oauth_redirect_uri(self) -> str:
+        """Redirect URI sent to Google; prefers GOOGLE_REDIRECT_URI, else FRONTEND_ORIGIN + /auth/callback."""
+        explicit = self.google_redirect_uri.strip()
+        if explicit:
+            return explicit
+        base = self.frontend_origin.strip().rstrip("/")
+        return f"{base}/auth/callback"
 
     @property
     def cors_origins_list(self) -> list[str]:
