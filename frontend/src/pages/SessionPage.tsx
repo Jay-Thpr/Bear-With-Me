@@ -65,6 +65,8 @@ export function SessionPage() {
   const [elapsed, setElapsed] = useState(0)
   /** Same as `elapsed` but survives `stop()` / `isLive` resetting state before `completeSession` runs. */
   const elapsedRef = useRef(0)
+  /** Wall clock when camera first went live — backup if tick counter is 0 (e.g. interval hiccups). */
+  const practiceWallStartRef = useRef<number | null>(null)
 
   const {
     coachPhase,
@@ -90,11 +92,14 @@ export function SessionPage() {
 
   useEffect(() => {
     if (!isLive) {
+      practiceWallStartRef.current = null
       startTransition(() => {
         setVideoFrameReady(false)
         setElapsed(0)
         elapsedRef.current = 0
       })
+    } else if (practiceWallStartRef.current == null) {
+      practiceWallStartRef.current = Date.now()
     }
   }, [isLive])
 
@@ -112,7 +117,15 @@ export function SessionPage() {
 
   const handleEndSession = () => {
     void (async () => {
-      const durationSec = Math.max(0, elapsedRef.current)
+      const tickSec = Math.max(0, elapsedRef.current)
+      const wallSec =
+        practiceWallStartRef.current != null
+          ? Math.max(
+              0,
+              Math.floor((Date.now() - practiceWallStartRef.current) / 1000),
+            )
+          : 0
+      const durationSec = Math.max(tickSec, wallSec)
       await disconnectCoach()
       stop()
       const notes = [userCaption, modelCaption].filter(Boolean).join('\n\n').trim() || null

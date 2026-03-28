@@ -27,16 +27,6 @@ const SKILL_TYPES = {
   MORE: 'more',
 } as const
 
-/** Skills tied to a focus ring are shown only on that preset — not again in the top "saved" row. */
-const PRESET_FOCUS_CATEGORIES = new Set<string>([
-  SKILL_TYPES.COOKING,
-  SKILL_TYPES.BASKETBALL,
-  SKILL_TYPES.MUSIC,
-  SKILL_TYPES.ART,
-  SKILL_TYPES.CODING,
-  SKILL_TYPES.PHOTOGRAPHY,
-])
-
 type SlotColor = 'primary' | 'secondary' | 'accent' | 'muted'
 
 type IconName =
@@ -210,6 +200,18 @@ function skillForPresetFallback(skills: SkillOut[], category: string): SkillOut 
   return best.s
 }
 
+/** True if this skill is the one shown on any preset ring (category or title-hint match). */
+function skillClaimedByPresetRing(skills: SkillOut[], skill: SkillOut): boolean {
+  for (const slot of ALL_SKILL_SLOTS) {
+    if (slot.type === SKILL_TYPES.MORE) continue
+    const byCat = skillForCategory(skills, slot.type)
+    if (byCat?.id === skill.id) return true
+    const byFallback = skillForPresetFallback(skills, slot.type)
+    if (byFallback?.id === skill.id) return true
+  }
+  return false
+}
+
 async function resolvePresetSkill(
   slotType: string,
   currentSkills: SkillOut[],
@@ -379,12 +381,9 @@ export function SkillSelectPage() {
   }, [])
 
   const userSlots: SkillSlot[] = useMemo(() => {
-    const withoutPresetDuplicates = apiSkills.filter((s) => {
-      const cat = normalizePresetCategory(s.context?.category)
-      if (!cat) return true
-      return !PRESET_FOCUS_CATEGORIES.has(cat)
-    })
-    return withoutPresetDuplicates.slice(0, 8).map((s, i) => ({
+    /** Only skills that no preset ring already represents (avoid duplicate bubbles above the arena). */
+    const orphans = apiSkills.filter((s) => !skillClaimedByPresetRing(apiSkills, s))
+    return orphans.slice(0, 8).map((s, i) => ({
       id: s.id,
       type: `user-${s.id}`,
       label: s.title?.trim() ? s.title.trim() : 'Unassigned',
