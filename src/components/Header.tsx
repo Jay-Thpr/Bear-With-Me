@@ -1,8 +1,24 @@
 "use client";
 import { useSession, signIn, signOut } from "next-auth/react";
+import { useState } from "react";
 
 export default function Header() {
   const { data: session } = useSession();
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsSigningIn(true);
+      const result = await signIn("google", { callbackUrl: "/" });
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
+      }
+      window.location.href = "/api/auth/signin/google?callbackUrl=%2F";
+    } catch {
+      window.location.href = "/api/auth/signin/google?callbackUrl=%2F";
+    }
+  };
   
   return (
     <header className="w-full p-6 flex justify-between items-center absolute top-0 z-10">
@@ -25,10 +41,10 @@ export default function Header() {
           </button>
         ) : (
           <button
-            onClick={() => signIn("google")}
+            onClick={handleGoogleSignIn}
             className="text-sm px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors border border-zinc-700"
           >
-            Sign in with Google
+            {isSigningIn ? "Redirecting..." : "Sign in with Google"}
           </button>
         )}
       </div>

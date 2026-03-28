@@ -85,6 +85,8 @@ Browser → WebSocket (ws server, /server) → Gemini Live API
 - **Nano Banana:** Gemini image generation model. Use Gemini API (image gen) to draw spatial corrections on a captured frame. Same API key, no separate setup.
 - **Google Workspace auth:** Service account. One-time setup, no OAuth redirect flow needed during demo.
 - **Demo environment:** Local during demo. Deploy to Vercel/Railway as stretch goal if time allows.
+- **Research pipeline (short-term):** Web-grounded retrieval is the primary evidence path. YouTube is captured as lightweight tutorial enrichment only. Deep per-video parsing is intentionally out of the blocking research path until latency and reliability justify bringing it back.
+- **Research artifact format:** The canonical final research output is a JSON dossier optimized for internal coaching quality. Human-readable renderings are secondary and can be derived later.
 
 ---
 

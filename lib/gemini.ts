@@ -13,6 +13,37 @@ function getAI() {
   return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
+function extractJsonPayload(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    return trimmed;
+  }
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    return trimmed.slice(objectStart, objectEnd + 1);
+  }
+
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    return trimmed.slice(arrayStart, arrayEnd + 1);
+  }
+
+  return trimmed;
+}
+
 /**
  * Step 1: Find YouTube tutorial URLs via Gemini search grounding.
  * Uses the googleSearch tool — Gemini handles search intent and ranking.
@@ -64,10 +95,140 @@ export async function findTutorialUrls(skill: string): Promise<string[]> {
 export async function conductWebResearch(
   skill: string,
   goal: string,
-  level: string
+  level: string,
+  focus = "overall technique"
 ): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
-    return `{"fundamentals":"Core technique for ${skill}","properForm":{},"commonMistakes":[],"progressionSteps":[],"safetyConsiderations":[],"sources":[]}`;
+    return JSON.stringify({
+      focus,
+      fundamentals: `Fallback grounded coaching evidence for ${skill} at ${level} level.`,
+      prerequisites: [
+        `Understand basic setup and equipment handling for ${skill}`,
+        `Practice with slow, deliberate repetitions before chasing speed`,
+      ],
+      findings: [
+        {
+          type: "proper_form",
+          label: "Controlled starting position",
+          detail: `The learner sets up in a balanced, repeatable starting position before each ${skill} attempt.`,
+          observableCue: "Body position is stable and reset before each rep",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 5,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "proper_form",
+          label: "Consistent object path",
+          detail: `The visible path of the movement stays repeatable instead of drifting between repetitions.`,
+          observableCue: "Movement path stays centered and repeatable",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 5,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "mistake",
+          label: "Rushing the repetition",
+          detail: "The learner speeds up as soon as the pattern starts to work, which breaks consistency.",
+          observableCue: "Tempo suddenly increases and form becomes erratic",
+          likelyCause: "Beginners try to skip the controlled rhythm-building phase",
+          correctionCue: "Slow it down and keep the same rhythm",
+          relatedDrill: "Slow controlled reps",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 4,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "mistake",
+          label: "Overcorrecting after an error",
+          detail: "The learner adds an extra large correction after a miss instead of resetting.",
+          observableCue: "Recovery movement becomes larger than the original mistake",
+          likelyCause: "The learner tries to save the rep instead of resetting cleanly",
+          correctionCue: "Reset cleanly, then restart the pattern",
+          relatedDrill: "Pause and reset drill",
+          beginnerUsefulness: 4,
+          specificity: 4,
+          observability: 4,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "drill",
+          label: "Slow controlled reps",
+          detail: `Practice ${skill} at a deliberately slow pace with one cue in mind.`,
+          relatedDrill: "Slow controlled reps",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 3,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "drill",
+          label: "Pause and reset drill",
+          detail: "Pause after each attempt, rebuild the setup, then restart with the same cue.",
+          relatedDrill: "Pause and reset drill",
+          beginnerUsefulness: 4,
+          specificity: 4,
+          observability: 3,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "progression",
+          label: "Build setup and rhythm first",
+          detail: `Start by making the setup and rhythm repeatable before combining the full ${goal}.`,
+          stage: "Setup and rhythm",
+          readyToAdvance: "The learner can repeat the setup consistently without rushing",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 4,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "progression",
+          label: "Layer in the full pattern gradually",
+          detail: "Add complexity only after the simpler component is stable.",
+          stage: "Pattern building",
+          readyToAdvance: "The learner can sustain short consistent runs",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 4,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "safety",
+          label: "Use a clear practice area",
+          detail: "Practice in a space with enough room to stop and reset safely.",
+          beginnerUsefulness: 4,
+          specificity: 3,
+          observability: 3,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "coaching_cue",
+          label: "One cue at a time",
+          detail: "Give one correction, then let the learner repeat several attempts before changing focus.",
+          beginnerUsefulness: 5,
+          specificity: 4,
+          observability: 2,
+          sourceConfidence: "medium",
+        },
+        {
+          type: "source_claim",
+          label: `${skill} should be learned through repeatable setup, visible consistency, and one-cue coaching`,
+          detail: "Fallback source claim used for local development and structure testing.",
+          beginnerUsefulness: 4,
+          specificity: 4,
+          observability: 2,
+          sourceConfidence: "low",
+        },
+      ],
+      openQuestions: [],
+      contradictions: [],
+      sources: [
+        { title: `${skill} fallback coaching source`, url: "https://example.com/fallback-research" },
+      ],
+    });
   }
 
   const ai = getAI();
@@ -76,30 +237,69 @@ export async function conductWebResearch(
     model: GEMINI_MODEL,
     contents: `Research how to coach someone in "${skill}", goal: "${goal}", level: ${level}.
 
-Use Google Search to find:
-1. Core technique fundamentals
-2. Proper form — OBSERVABLE descriptions only (what a camera can see: body parts, angles, positions)
-3. Common mistakes (observable) and their corrections
-4. Progression order (4-6 stages)
-5. Safety considerations
+Current retrieval focus: ${focus}
+
+Use Google Search to find high-signal, practical material for this focus. Prioritize instructional sources, coaching material, and skill-specific teaching guidance that would help a real-time coaching system.
+
+Extract atomic evidence units only. Prefer concrete beginner coaching evidence over summary prose.
+
+Allowed evidence unit types:
+- "proper_form"
+- "mistake"
+- "mistake_cause"
+- "drill"
+- "progression"
+- "safety"
+- "coaching_cue"
+- "source_claim"
+
+Scoring rules:
+- Use 1-5 scales for beginnerUsefulness, specificity, and observability.
+- Only use observability > 1 if the cue is visibly checkable from a camera.
+- Set sourceConfidence to high, medium, or low.
+
+For mistakes:
+- make them observable
+- include likelyCause when possible
+- include correctionCue when possible
+- include relatedDrill when possible
+
+For progression:
+- include stage and readyToAdvance when possible
 
 Return ONLY valid JSON:
 {
-  "fundamentals": "2-3 sentence overview",
-  "properForm": { "aspect_name": "precise observable description" },
-  "commonMistakes": [{ "issue": "observable description", "severity": "high|medium|low", "correction": "specific fix" }],
-  "progressionSteps": ["step 1", "step 2"],
-  "safetyConsiderations": ["..."],
+  "focus": "${focus}",
+  "fundamentals": "1-2 sentence overview",
+  "prerequisites": ["specific prerequisite"],
+  "findings": [
+    {
+      "type": "proper_form",
+      "label": "short label",
+      "detail": "specific coaching-relevant detail",
+      "observableCue": "what a camera should see if relevant",
+      "likelyCause": "for mistakes only",
+      "correctionCue": "short spoken cue if relevant",
+      "relatedDrill": "specific drill if relevant",
+      "stage": "progression stage if relevant",
+      "readyToAdvance": "what success looks like before moving on",
+      "beginnerUsefulness": 1,
+      "specificity": 1,
+      "observability": 1,
+      "sourceConfidence": "high"
+    }
+  ],
+  "openQuestions": ["uncertain area worth follow-up if evidence is conflicting or weak"],
+  "contradictions": ["brief description of conflicting advice if present"],
   "sources": [{ "title": "...", "url": "..." }]
 }`,
     config: {
-      responseMimeType: "application/json",
       tools: [{ googleSearch: {} }],
     },
   });
 
   // Augment sources with grounding metadata
-  const text = response.text || "";
+  const text = extractJsonPayload(response.text || "");
   try {
     const result = JSON.parse(text);
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
@@ -132,10 +332,12 @@ export async function analyzeYouTubeVideo(
       { fileData: { fileUri: videoUrl } },
       { text: `Analyze this tutorial video for coaching someone in "${skill}" with goal "${goal}".
 
-Extract:
+Extract beginner-relevant coaching evidence:
 1. KEY TECHNIQUES: Each distinct technique shown. Include timestamp (MM:SS), description of proper form, visual cues for what correct looks like
-2. COMMON MISTAKES: If instructor shows/discusses mistakes — timestamp, mistake description, correction
-3. BEST MOMENTS: 2-3 moments ideal for showing a student during live coaching ("pause, watch this part")
+2. COMMON MISTAKES: If instructor shows/discusses mistakes — timestamp, mistake description, likely cause, correction cue, drill if mentioned
+3. BEST MOMENTS: 3-5 moments ideal for showing a student during live coaching
+4. BEGINNER DRILLS OR PROGRESSIONS explicitly demonstrated or described
+5. PREREQUISITES or setup notes before attempting the full skill
 
 Return ONLY valid JSON:
 {
@@ -143,8 +345,10 @@ Return ONLY valid JSON:
   "title": "video title",
   "overallSummary": "2-3 sentences",
   "keyTechniques": [{ "technique": "name", "timestamp": "MM:SS", "description": "proper form", "visualCues": "what to look for" }],
-  "commonMistakesShown": [{ "mistake": "description", "timestamp": "MM:SS", "correction": "fix" }],
-  "bestMomentsForReference": [{ "timestamp": "MM:SS", "description": "what is shown", "useCase": "when to show this during coaching" }]
+  "commonMistakesShown": [{ "mistake": "description", "timestamp": "MM:SS", "likelyCause": "why it happens", "correction": "fix", "coachingCue": "short spoken cue", "drill": "short drill" }],
+  "bestMomentsForReference": [{ "timestamp": "MM:SS", "description": "what is shown", "observableCue": "what success looks like", "useCase": "when to show this during coaching" }],
+  "beginnerDrills": ["specific drill"],
+  "prerequisites": ["specific prerequisite"]
 }` },
     ],
     config: { responseMimeType: "application/json" },
@@ -236,7 +440,9 @@ Return a JSON object matching this exact shape:
 }
 
 export async function generateSkillIllustration(skill: string): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
+  const configuredImageModel = process.env.GEMINI_IMAGE_MODEL;
+
+  if (!process.env.GEMINI_API_KEY || !configuredImageModel) {
     return "/fallback-skill-icon.png";
   }
 
@@ -244,7 +450,7 @@ export async function generateSkillIllustration(skill: string): Promise<string> 
     const ai = getAI();
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17", // Nano Banana image gen model
+      model: configuredImageModel,
       contents: `Create a minimal, stylized illustration for the skill: "${skill}".
 - Square format, clean composition
 - Warm inviting color palette, dark background
@@ -263,7 +469,7 @@ export async function generateSkillIllustration(skill: string): Promise<string> 
     }
     return "/fallback-skill-icon.png";
   } catch (err) {
-    console.error("[gemini] Illustration generation failed:", err);
+    console.warn("[gemini] Illustration generation skipped or failed, using fallback icon.");
     return "/fallback-skill-icon.png"; // Never block the pipeline
   }
 }

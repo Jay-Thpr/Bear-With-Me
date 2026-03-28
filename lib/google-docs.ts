@@ -16,6 +16,7 @@ export interface TabbedResearchDoc {
   documentId: string;
   url: string;
   researchLogTabId: string;
+  liveResearchTabId: string;
   finalResearchTabId: string;
 }
 
@@ -254,7 +255,7 @@ export async function replaceTabContent(
   const endIndex = getTabEndIndex(docRes.data, tabId);
   const requests: any[] = [];
 
-  if (endIndex > 1) {
+  if (endIndex > 2) {
     requests.push({
       deleteContentRange: {
         range: {
@@ -316,8 +317,16 @@ export async function createResearchTabbedDoc(
         {
           addDocumentTab: {
             tabProperties: {
-              title: "Final Research",
+              title: "Live Research",
               index: 1,
+            },
+          },
+        },
+        {
+          addDocumentTab: {
+            tabProperties: {
+              title: "Final Research",
+              index: 2,
             },
           },
         },
@@ -325,9 +334,14 @@ export async function createResearchTabbedDoc(
     },
   });
 
-  const finalResearchTabId =
+  const liveResearchTabId =
     batchRes.data.replies?.[1]?.addDocumentTab?.tabProperties?.tabId;
+  const finalResearchTabId =
+    batchRes.data.replies?.[2]?.addDocumentTab?.tabProperties?.tabId;
 
+  if (!liveResearchTabId) {
+    throw new Error("Could not determine the live research tab ID");
+  }
   if (!finalResearchTabId) {
     throw new Error("Could not determine the final research tab ID");
   }
@@ -336,6 +350,7 @@ export async function createResearchTabbedDoc(
     documentId,
     url: `https://docs.google.com/document/d/${documentId}`,
     researchLogTabId: firstTabId,
+    liveResearchTabId,
     finalResearchTabId,
   };
 }
