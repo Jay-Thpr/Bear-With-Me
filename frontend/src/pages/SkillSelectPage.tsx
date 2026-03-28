@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { DndProvider, useDrag, useDrop } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import { Link, useNavigate } from 'react-router-dom'
+import { fetchSkills, type SkillOut } from '../api/skills'
+import { useAuth } from '../auth/AuthContext'
 import {
   Camera,
   ChefHat,
@@ -25,6 +27,16 @@ const SKILL_TYPES = {
   PHOTOGRAPHY: 'photography',
   MORE: 'more',
 } as const
+
+/** Skills tied to a focus ring are shown only on that preset — not again in the top "saved" row. */
+const PRESET_FOCUS_CATEGORIES = new Set<string>([
+  SKILL_TYPES.COOKING,
+  SKILL_TYPES.BASKETBALL,
+  SKILL_TYPES.MUSIC,
+  SKILL_TYPES.ART,
+  SKILL_TYPES.CODING,
+  SKILL_TYPES.PHOTOGRAPHY,
+])
 
 type SlotColor = 'primary' | 'secondary' | 'accent' | 'muted'
 
@@ -71,8 +83,12 @@ interface SkillSlot {
   position: { x: number; y: number }
   color: SlotColor
   popularity: number
+  source: 'user' | 'preset'
+  /** Preset ring only: skill id when one is assigned to this focus category. */
+  assignedSkillId?: string
 }
 
+/** Template presets; labels are replaced from the API (or "Unassigned") in `presetSlotsWithLabels`. */
 const ALL_SKILL_SLOTS: SkillSlot[] = [
   {
     id: 'cooking',
@@ -82,6 +98,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: -120, y: -80 },
     color: 'primary',
     popularity: 95,
+    source: 'preset',
   },
   {
     id: 'basketball',
@@ -91,6 +108,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: 120, y: -80 },
     color: 'secondary',
     popularity: 90,
+    source: 'preset',
   },
   {
     id: 'music',
@@ -100,6 +118,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: -160, y: 40 },
     color: 'accent',
     popularity: 85,
+    source: 'preset',
   },
   {
     id: 'art',
@@ -109,6 +128,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: 160, y: 40 },
     color: 'primary',
     popularity: 80,
+    source: 'preset',
   },
   {
     id: 'coding',
@@ -118,6 +138,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: -120, y: 140 },
     color: 'secondary',
     popularity: 75,
+    source: 'preset',
   },
   {
     id: 'photography',
@@ -127,6 +148,7 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: 120, y: 140 },
     color: 'accent',
     popularity: 70,
+    source: 'preset',
   },
   {
     id: 'more',
@@ -136,10 +158,27 @@ const ALL_SKILL_SLOTS: SkillSlot[] = [
     position: { x: 0, y: 200 },
     color: 'muted',
     popularity: 100,
+    source: 'preset',
   },
 ]
 
-const MAX_SKILLS = 7
+function normalizePresetCategory(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const t = value.trim().toLowerCase()
+  return t || null
+}
+
+/** Match skills to a preset ring (`cooking`, `music`, …); category may differ by case or spacing in DB. */
+function skillForCategory(skills: SkillOut[], category: string) {
+  const want = normalizePresetCategory(category)
+  if (!want) return undefined
+  const matches = skills.filter((s) => normalizePresetCategory(s.context?.category) === want)
+  if (matches.length === 0) return undefined
+  return matches.sort(
+    (a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  )[0]
+}
 
 function DraggableCharacter({
   onDrag,
@@ -260,14 +299,78 @@ function ArenaHoverClear({ onClear }: { onClear: () => void }) {
 
 export function SkillSelectPage() {
   const navigate = useNavigate()
+  const { user, loading: authLoading } = useAuth()
   const [isDragging, setIsDragging] = useState(false)
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [apiSkills, setApiSkills] = useState<
+    Awaited<ReturnType<typeof fetchSkills>>
+  >([])
+  const [skillsLoadError, setSkillsLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      startTransition(() => setApiSkills([]))
+      return
+    }
+    let cancelled = false
+    fetchSkills()
+      .then((list) => {
+        if (!cancelled) {
+          setApiSkills(list)
+          setSkillsLoadError(null)
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setSkillsLoadError(e instanceof Error ? e.message : 'Could not load skills')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading])
+
+  const userSlots: SkillSlot[] = useMemo(() => {
+    const withoutPresetDuplicates = apiSkills.filter((s) => {
+      const cat = normalizePresetCategory(s.context?.category)
+      if (!cat) return true
+      return !PRESET_FOCUS_CATEGORIES.has(cat)
+    })
+    return withoutPresetDuplicates.slice(0, 8).map((s, i) => ({
+      id: s.id,
+      type: `user-${s.id}`,
+      label: s.title?.trim() ? s.title.trim() : 'Unassigned',
+      icon: 'chef' as IconName,
+      position: {
+        x: -120 + (i % 4) * 80,
+        y: -200,
+      },
+      color: 'primary' as SlotColor,
+      popularity: 100,
+      source: 'user' as const,
+    }))
+  }, [apiSkills])
+
+  const presetSlotsWithLabels: SkillSlot[] = useMemo(() => {
+    return ALL_SKILL_SLOTS.map((slot) => {
+      if (slot.type === SKILL_TYPES.MORE) return slot
+      const assigned = skillForCategory(apiSkills, slot.type)
+      const label =
+        assigned?.title?.trim() ? assigned.title.trim() : 'Unassigned'
+      return {
+        ...slot,
+        label,
+        assignedSkillId: assigned?.id,
+      }
+    })
+  }, [apiSkills])
 
   const { displayedSkills, circleSize, iconSize } = useMemo(() => {
-    const sorted = [...ALL_SKILL_SLOTS].sort((a, b) => b.popularity - a.popularity)
-    const skillsToShow = sorted.slice(0, MAX_SKILLS)
+    const combined = [...userSlots, ...presetSlotsWithLabels]
+    const skillsToShow = combined.slice(0, 20)
     const n = skillsToShow.length
     let size = 96
     let iconPx = 32
@@ -285,12 +388,30 @@ export function SkillSelectPage() {
       iconPx = 20
     }
     return { displayedSkills: skillsToShow, circleSize: size, iconSize: iconPx }
-  }, [])
+  }, [userSlots, presetSlotsWithLabels])
 
   const handleDrop = (skillId: string) => {
     setHoveredSlot(null)
+    const slot = displayedSkills.find((s) => s.id === skillId)
     if (skillId === 'more') {
       navigate('/onboarding', { state: { createSkill: true } })
+      return
+    }
+    if (slot?.source === 'preset' && slot.id !== 'more') {
+      const linkedId = slot.assignedSkillId
+      if (linkedId) {
+        navigate('/dashboard', {
+          state: {
+            skillId: linkedId,
+            skillTitle:
+              slot.label !== 'Unassigned' ? slot.label : 'Your skill',
+          },
+        })
+        return
+      }
+      navigate('/onboarding', {
+        state: { createSkill: true, category: slot.type },
+      })
       return
     }
     setSelectedSkill(skillId)
@@ -299,6 +420,30 @@ export function SkillSelectPage() {
 
   const handleConfirm = () => {
     if (!selectedSkill) return
+    const slot = displayedSkills.find((s) => s.id === selectedSkill)
+    if (slot?.source === 'user') {
+      navigate('/dashboard', {
+        state: { skillId: slot.id, skillTitle: slot.label },
+      })
+      return
+    }
+    if (slot?.source === 'preset' && slot.id !== 'more') {
+      const linkedId = slot.assignedSkillId
+      if (linkedId) {
+        navigate('/dashboard', {
+          state: {
+            skillId: linkedId,
+            skillTitle:
+              slot.label !== 'Unassigned' ? slot.label : 'Your skill',
+          },
+        })
+        return
+      }
+      navigate('/onboarding', {
+        state: { createSkill: true, category: slot.type },
+      })
+      return
+    }
     navigate('/dashboard')
   }
 
@@ -312,8 +457,15 @@ export function SkillSelectPage() {
           <p className="skill-select__subtitle">
             {selectedSkill
               ? 'Tap to confirm your choice'
-              : 'Drag your character to a focus area'}
+              : user
+                ? 'Your saved skills are on top; drag onto a focus area or create new'
+                : 'Sign in to load your skills — or drag onto a focus area to explore'}
           </p>
+          {skillsLoadError ? (
+            <p className="skill-select__subtitle" style={{ color: 'var(--destructive)' }}>
+              {skillsLoadError}
+            </p>
+          ) : null}
         </div>
 
         <div className="skill-select__arena-wrap">

@@ -1,9 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.deps import get_optional_user
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 @router.get("/me")
-def me_stub() -> dict[str, str]:
-    """Placeholder user profile."""
-    return {"id": "stub", "display_name": "Player One"}
+def me(user: dict | None = Depends(get_optional_user)) -> dict:
+    """Current user profile (requires session cookie)."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user

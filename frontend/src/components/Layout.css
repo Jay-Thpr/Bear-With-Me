@@ -44,10 +44,52 @@
   color: var(--primary-dark);
 }
 
+.layout__header-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
 .layout__nav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 1rem;
+}
+
+.layout__auth {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.layout__auth-muted {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.layout__avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-sage);
+}
+
+.layout__user-name {
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout__auth-btn {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.88rem;
+  border-radius: 12px;
 }
 
 .layout__link {

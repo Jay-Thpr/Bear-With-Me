@@ -1,7 +1,9 @@
 import type { RefObject } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { requestFormCorrection } from '../api/annotations'
+import { fetchLiveCoachContext } from '../api/skills'
 import { fetchLiveEphemeralToken } from '../api/live'
+import { formatLiveCoachContextForSystemInstruction } from '../live/liveCoachContext'
 import { captureVideoFrameAsJpegBase64 } from '../live/captureVideoFrame'
 import {
   GeminiLiveClient,
@@ -30,6 +32,11 @@ function coachingTextFromToolArgs(
 }
 
 const FORM_CORRECTION_COOLDOWN_MS = 30_000
+
+export type ConnectCoachOptions = {
+  /** When set, loads SQLite skill + research + progress to specialize the system instruction. */
+  skillId?: string
+}
 
 const COACH_SYSTEM = `You are a concise, encouraging real-time skills coach. The learner is on camera and microphone. Give short, specific spoken feedback.
 
@@ -195,7 +202,11 @@ export function useGeminiLiveSession(
   }, [])
 
   const connectCoach = useCallback(
-    async (stream: MediaStream, videoEl: HTMLVideoElement | null) => {
+    async (
+      stream: MediaStream,
+      videoEl: HTMLVideoElement | null,
+      options?: ConnectCoachOptions,
+    ) => {
       await disconnectCoach()
 
       setUserCaption('')
@@ -204,6 +215,22 @@ export function useGeminiLiveSession(
       modelCaptionRef.current = ''
       setCoachPhase('connecting')
       setCoachError(null)
+
+      let systemInstruction = COACH_SYSTEM
+      if (options?.skillId) {
+        try {
+          const coachCtx = await fetchLiveCoachContext(options.skillId)
+          systemInstruction = `${COACH_SYSTEM}\n\n---\n\n${formatLiveCoachContextForSystemInstruction(coachCtx)}`
+        } catch (e) {
+          const msg =
+            e instanceof Error
+              ? e.message
+              : 'Could not load skill context for the coach.'
+          setCoachError(msg)
+          setCoachPhase('error')
+          return
+        }
+      }
 
       let accessToken: string
       let liveModel: string
@@ -230,7 +257,7 @@ export function useGeminiLiveSession(
       client.connect(
         accessToken,
         liveModel,
-        COACH_SYSTEM,
+        systemInstruction,
         {
           onSetupComplete: () => {
             setCoachPhase('live')
@@ -304,11 +331,13 @@ export function useGeminiLiveSession(
           onInterrupted: () => {
             playbackRef.current?.interrupt()
           },
-          onInputTranscript: (text, _finished) => {
+          onInputTranscript: (text, finished) => {
+            void finished
             userCaptionRef.current = text
             setUserCaption(text)
           },
-          onOutputTranscript: (text, _finished) => {
+          onOutputTranscript: (text, finished) => {
+            void finished
             modelCaptionRef.current = text
             setModelCaption(text)
           },

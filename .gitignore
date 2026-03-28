@@ -1,6 +1,9 @@
 # Generated test images
 backend/scripts/output/
 
+# Local SQLite DB (skill progress & research)
+backend/data/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -20,3 +23,6 @@ frontend/dist/
 .vscode/
 
 scripts/
+.next/
+next-env.d.ts
+node_modules/

@@ -1,6 +1,17 @@
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { fetchSkill, fetchSkills, type SkillOut } from '../api/skills'
 import { Character } from '../components/Character'
 import './Page.css'
+
+function formatPracticeTime(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.round(s / 60)}m`
+  const h = Math.floor(s / 3600)
+  const m = Math.round((s % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
 
 const FlameIcon = () => (
   <svg
@@ -62,10 +73,51 @@ const ZapIcon = () => (
 )
 
 export function DashboardPage() {
-  const currentSkill = 'Knife skills'
-  const streak = 7
-  const level = 2
-  const progress = 42
+  const location = useLocation()
+  const nav = location.state as { skillTitle?: string; skillId?: string } | null
+  const [skill, setSkill] = useState<SkillOut | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      setLoadError(null)
+      try {
+        if (nav?.skillId) {
+          const s = await fetchSkill(nav.skillId)
+          if (!cancelled) setSkill(s)
+        } else if (nav?.skillTitle) {
+          const list = await fetchSkills()
+          if (cancelled) return
+          const m = list.find((x) => x.title === nav.skillTitle)
+          setSkill(m ?? null)
+        } else {
+          setSkill(null)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLoadError(e instanceof Error ? e.message : 'Could not load skill.')
+          setSkill(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [nav?.skillId, nav?.skillTitle])
+
+  const currentSkill = skill?.title ?? nav?.skillTitle ?? 'Your skill'
+  const streak = skill?.stats_day_streak ?? 0
+  const level = skill?.stats_level ?? 1
+  const progress = Math.round(skill?.stats_progress_percent ?? 0)
+  const sessions = skill?.stats_sessions ?? 0
+  const practiceLabel = formatPracticeTime(skill?.stats_practice_seconds ?? 0)
+  const mastered = skill?.stats_mastered ?? 0
 
   const today = new Date()
   const calendarDays = Array.from({ length: 28 }, (_, i) => {
@@ -106,13 +158,36 @@ export function DashboardPage() {
     },
   ]
 
+  if (loading) {
+    return (
+      <div className="page journey page--flush">
+        <p className="page__lead">Loading your skill…</p>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="page journey page--flush">
+        <p className="page__lead" style={{ color: 'var(--destructive)' }}>
+          {loadError}
+        </p>
+        <Link to="/select-skill" className="btn btn--primary" style={{ marginTop: '1rem' }}>
+          Pick a skill
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="page journey page--flush">
       <div className="journey__header">
         <div>
           <h1 className="page__title">Your journey</h1>
           <p className="page__lead" style={{ marginTop: '0.35rem' }}>
-            Continuing {currentSkill} practice
+            {skill
+              ? `Continuing ${currentSkill} practice`
+              : 'Choose a skill on the board to see your stats'}
           </p>
         </div>
         <div className="journey__streak">
@@ -176,7 +251,7 @@ export function DashboardPage() {
                   }}
                 >
                   <div className="journey__stat-val" style={{ color: '#88a594' }}>
-                    24
+                    {sessions}
                   </div>
                   <div className="journey__stat-label">Sessions</div>
                 </div>
@@ -188,7 +263,7 @@ export function DashboardPage() {
                   }}
                 >
                   <div className="journey__stat-val" style={{ color: '#7aaac8' }}>
-                    18h
+                    {practiceLabel}
                   </div>
                   <div className="journey__stat-label">Practice</div>
                 </div>
@@ -200,13 +275,18 @@ export function DashboardPage() {
                   }}
                 >
                   <div className="journey__stat-val" style={{ color: '#b89a60' }}>
-                    12
+                    {mastered}
                   </div>
                   <div className="journey__stat-label">Mastered</div>
                 </div>
               </div>
               <Link
                 to="/session"
+                state={
+                  skill
+                    ? { skillId: skill.id, skillTitle: skill.title }
+                    : undefined
+                }
                 className="btn btn--primary btn--lg"
                 style={{ marginTop: '1.25rem', width: '100%' }}
               >

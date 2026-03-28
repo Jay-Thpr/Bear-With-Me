@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight, Sparkles } from 'lucide-react'
+import type { SkillOut } from '../api/skills'
 import { Character } from '../components/Character'
 import './Page.css'
 
 type LevelUpState = {
   durationSec?: number
   skillLabel?: string
+  skillId?: string
+  coach_note?: string
+  level_ups?: number
+  progress_delta?: number
+  mastered_delta?: number
+  skill?: SkillOut
+  sessionError?: string
 }
 
 const MOCK_SUMMARY =
@@ -19,7 +27,14 @@ export function LevelUpPage() {
   const location = useLocation()
   const state = (location.state ?? {}) as LevelUpState
   const durationSec = state.durationSec ?? 0
-  const skillLabel = state.skillLabel ?? 'Knife skills'
+  const skillLabel = state.skillLabel ?? 'Your skill'
+  const skillId = state.skillId
+  const skill = state.skill
+  const levelUps = state.level_ups ?? 0
+  const coachNote = state.coach_note
+  const progressDelta = state.progress_delta
+  const masteredDelta = state.mastered_delta
+  const sessionError = state.sessionError
 
   const [notes, setNotes] = useState('')
 
@@ -35,25 +50,58 @@ export function LevelUpPage() {
     }
   }, [])
 
-  const prevLevel = 2
-  const nextLevel = 3
+  const nextLevel = skill?.stats_level ?? 1
+  const prevLevel = Math.max(1, nextLevel - levelUps)
   const newItemLabel = 'Chef’s pan'
+  const leveledUp = levelUps > 0
+  const recap =
+    coachNote && coachNote.trim().length > 0 ? coachNote.trim() : MOCK_SUMMARY
 
   const durationLabel =
     durationSec > 0
       ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
       : '—'
 
+  const dashState =
+    skillId != null ? { skillId, skillTitle: skillLabel } : undefined
+
   return (
     <div className="page level-up page--flush">
+      {sessionError ? (
+        <p
+          className="level-up__subtitle"
+          style={{ color: 'var(--destructive)', marginBottom: '1rem' }}
+          role="alert"
+        >
+          {sessionError}
+        </p>
+      ) : null}
       <div className="level-up__hero">
         <div className="level-up__badge-row">
           <Sparkles className="level-up__sparkle" aria-hidden />
           <span className="level-up__kicker">Session complete</span>
         </div>
-        <h1 className="level-up__title">Level up!</h1>
+        <h1 className="level-up__title">{leveledUp ? 'Level up!' : 'Nice work!'}</h1>
         <p className="level-up__subtitle">
-          You reached <strong>level {nextLevel}</strong> in {skillLabel}. Here’s your hero with a new gear unlock.
+          {leveledUp ? (
+            <>
+              You reached <strong>level {nextLevel}</strong> in {skillLabel}. Here’s your hero with a
+              new gear unlock.
+            </>
+          ) : (
+            <>
+              You practiced <strong>{skillLabel}</strong>
+              {skill != null ? (
+                <>
+                  {' '}
+                  — <strong>{Math.round(skill.stats_progress_percent)}%</strong> toward level{' '}
+                  {nextLevel + 1}.
+                </>
+              ) : (
+                '.'
+              )}
+            </>
+          )}
         </p>
       </div>
 
@@ -71,20 +119,32 @@ export function LevelUpPage() {
         </div>
 
         <div className="level-up__column level-up__column--next">
-          <span className="level-up__column-label level-up__column-label--new">After unlock</span>
-          <div className="level-up__avatar-card level-up__avatar-card--glow">
+          <span className="level-up__column-label level-up__column-label--new">
+            {leveledUp ? 'After unlock' : 'Current rank'}
+          </span>
+          <div
+            className={`level-up__avatar-card${leveledUp ? ' level-up__avatar-card--glow' : ''}`}
+          >
             <div className="level-up__avatar-with-item">
               <Character size="large" />
-              <div className="level-up__new-item" title={`New: ${newItemLabel}`}>
-                <span className="level-up__new-item-emoji" aria-hidden>
-                  🍳
-                </span>
-                <span className="level-up__new-item-caption">New</span>
-              </div>
+              {leveledUp ? (
+                <div className="level-up__new-item" title={`New: ${newItemLabel}`}>
+                  <span className="level-up__new-item-emoji" aria-hidden>
+                    🍳
+                  </span>
+                  <span className="level-up__new-item-caption">New</span>
+                </div>
+              ) : null}
             </div>
-            <span className="level-up__lvl-pill level-up__lvl-pill--up">Lv. {nextLevel}</span>
+            <span
+              className={`level-up__lvl-pill${leveledUp ? ' level-up__lvl-pill--up' : ''}`}
+            >
+              Lv. {nextLevel}
+            </span>
           </div>
-          <p className="level-up__unlock-name">{newItemLabel}</p>
+          <p className="level-up__unlock-name">
+            {leveledUp ? newItemLabel : `Level ${nextLevel} learner`}
+          </p>
         </div>
       </div>
 
@@ -98,17 +158,31 @@ export function LevelUpPage() {
             ·
           </span>
           <span className="level-up__meta">Focus: {skillLabel}</span>
+          {progressDelta != null ? (
+            <>
+              <span className="level-up__meta-sep" aria-hidden>
+                ·
+              </span>
+              <span className="level-up__meta">+{Math.round(progressDelta)}% progress</span>
+            </>
+          ) : null}
+          {masteredDelta != null && masteredDelta > 0 ? (
+            <>
+              <span className="level-up__meta-sep" aria-hidden>
+                ·
+              </span>
+              <span className="level-up__meta">+{masteredDelta} mastered</span>
+            </>
+          ) : null}
         </p>
-        <p className="level-up__description">{MOCK_SUMMARY}</p>
+        <p className="level-up__description">{recap}</p>
       </section>
 
       <section className="level-up__section" aria-labelledby="feedback-heading">
         <h2 id="feedback-heading" className="level-up__section-title">
           Your notes
         </h2>
-        <p className="level-up__hint">
-          How did this session feel? (Mock — not saved yet.)
-        </p>
+        <p className="level-up__hint">How did this session feel?</p>
         <textarea
           id="session-notes"
           className="level-up__notes"
@@ -121,10 +195,10 @@ export function LevelUpPage() {
       </section>
 
       <div className="level-up__actions">
-        <Link to="/dashboard" className="btn btn--primary btn--lg">
+        <Link to="/dashboard" state={dashState} className="btn btn--primary btn--lg">
           Back to journey
         </Link>
-        <Link to="/session" className="btn btn--ghost">
+        <Link to="/session" state={dashState} className="btn btn--ghost">
           Another session
         </Link>
       </div>

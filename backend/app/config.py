@@ -1,9 +1,15 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Always load backend/.env next to this package, not only when the shell cwd is `backend/`.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -11,11 +17,26 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
     cors_origins: str = "http://localhost:5173"
 
+    # Google OAuth (https://console.cloud.google.com/apis/credentials)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Must match an authorized redirect URI in the Google OAuth client (SPA callback).
+    google_redirect_uri: str = "http://localhost:5173/auth/callback"
+
+    # HS256 signing for session cookies (set a long random string in production).
+    jwt_secret: str = "dev-only-change-jwt-secret"
+    cookie_secure: bool = False
+
+    # Persistent storage (empty = SQLite file under backend/data/app.db)
+    database_url: str = ""
+
     gemini_api_key: str = ""
     # Must support Live / BidiGenerateContent (see Gemini API “Live” / native audio models).
     gemini_live_model: str = "gemini-3.1-flash-live-preview"
     # Still-image form markup (Nano Banana 2); REST generateContent, not Live WebSocket.
     gemini_image_model: str = "gemini-3.1-flash-image-preview"
+    # Deep skill research (REST generateContent; use a model your key supports — see scripts/check_gemini_key.py)
+    gemini_research_model: str = "gemini-3-flash-preview"
 
     # Background removal after image gen: local rembg (default) or remove.bg API
     # rembg | remove_bg
@@ -33,6 +54,22 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def jwt_signing_secret(self) -> str:
+        s = self.jwt_secret.strip()
+        return s if s else "dev-only-change-jwt-secret"
+
+    @property
+    def sqlite_path(self) -> Path:
+        return _BACKEND_ROOT / "data" / "app.db"
+
+    @property
+    def database_url_resolved(self) -> str:
+        u = self.database_url.strip()
+        if u:
+            return u
+        return f"sqlite:///{self.sqlite_path}"
 
 
 settings = Settings()

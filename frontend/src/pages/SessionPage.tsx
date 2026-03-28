@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { startTransition, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { completeSession } from '../api/skills'
 import { useGeminiLiveSession } from '../hooks/useGeminiLiveSession'
 import { useCameraStream } from '../hooks/useCameraStream'
 import './Page.css'
@@ -16,8 +17,13 @@ const TIPS = [
   'Use manual capture when you want a still annotated with form cues.',
 ]
 
+type SessionLocation = { skillId?: string; skillTitle?: string }
+
 export function SessionPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const sessionNav = (location.state ?? null) as SessionLocation | null
+  const skillTitle = sessionNav?.skillTitle ?? 'Your skill'
   const { videoRef, mediaStream, status, errorMessage, start, stop, isLive } =
     useCameraStream({ audio: true })
   const [videoFrameReady, setVideoFrameReady] = useState(false)
@@ -47,8 +53,10 @@ export function SessionPage() {
 
   useEffect(() => {
     if (!isLive) {
-      setVideoFrameReady(false)
-      setElapsed(0)
+      startTransition(() => {
+        setVideoFrameReady(false)
+        setElapsed(0)
+      })
     }
   }, [isLive])
 
@@ -59,14 +67,57 @@ export function SessionPage() {
   }, [isLive])
 
   const handleEndSession = () => {
-    void disconnectCoach()
-    stop()
-    navigate('/level-up', {
-      state: {
-        durationSec: elapsed,
-        skillLabel: 'Knife skills',
-      },
-    })
+    void (async () => {
+      await disconnectCoach()
+      stop()
+      const skillId = sessionNav?.skillId
+      const notes = [userCaption, modelCaption].filter(Boolean).join('\n\n').trim() || null
+      if (skillId && elapsed > 0) {
+        try {
+          const result = await completeSession(skillId, {
+            duration_seconds: elapsed,
+            session_notes: notes,
+          })
+          navigate('/level-up', {
+            state: {
+              durationSec: elapsed,
+              skillLabel: skillTitle,
+              skillId,
+              coach_note: result.coach_note,
+              level_ups: result.level_ups,
+              progress_delta: result.progress_delta,
+              mastered_delta: result.mastered_delta,
+              skill: result.skill,
+            },
+          })
+          return
+        } catch (e) {
+          console.error(e)
+          navigate('/level-up', {
+            state: {
+              durationSec: elapsed,
+              skillLabel: skillTitle,
+              skillId,
+              sessionError: e instanceof Error ? e.message : 'Could not save session.',
+            },
+          })
+          return
+        }
+      }
+      navigate('/level-up', {
+        state: {
+          durationSec: elapsed,
+          skillLabel: skillTitle,
+          skillId,
+          sessionError:
+            skillId && elapsed === 0
+              ? 'Session was too short to record.'
+              : !skillId
+                ? 'No skill selected — open the dashboard from a skill first.'
+                : undefined,
+        },
+      })
+    })()
   }
 
   const phaseCurrent = coachPhase === 'live' ? 4 : coachPhase === 'connecting' ? 3 : 2
@@ -82,7 +133,7 @@ export function SessionPage() {
         <header className="session-header">
           <div>
             <h2 className="page__title page__title--sm" style={{ margin: 0 }}>
-              Live coaching
+              Live coaching — {skillTitle}
             </h2>
             <p className="session-header__meta">
               {coachPhase === 'live' && 'Coach connected — stay in frame and describe what you are practicing.'}
@@ -297,7 +348,9 @@ export function SessionPage() {
                       className="btn btn--primary"
                       onClick={() => {
                         const el = videoRef.current
-                        void connectCoach(mediaStream, el)
+                        void connectCoach(mediaStream, el, {
+                          skillId: sessionNav?.skillId,
+                        })
                       }}
                     >
                       Connect AI coach
