@@ -23,6 +23,8 @@ export const authOptions: NextAuthOptions = {
                 "https://www.googleapis.com/auth/documents",
                 "https://www.googleapis.com/auth/drive.file",
                 "https://www.googleapis.com/auth/calendar.events",
+                "https://www.googleapis.com/auth/photoslibrary.appendonly",
+                "https://www.googleapis.com/auth/photoslibrary.readonly",
               ].join(" "),
               access_type: "offline",
               prompt: "select_account consent",

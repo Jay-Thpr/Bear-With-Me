@@ -23,6 +23,17 @@ interface LogEntry {
 
 const COACH_FUNCTION_DECLARATIONS = [
   {
+    name: "capture_and_sync_photo",
+    description: "Capture a screenshot of the current camera frame and save it to the user's Google Photos with a coaching label. Call this when the user asks for help, requests a save, or when a key moment should be recorded.",
+    parameters: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "Short description of what is being captured, e.g. 'Grip correction needed'" },
+      },
+      required: ["label"],
+    },
+  },
+  {
     name: "log_observation",
     description: "Log every piece of coaching feedback with its tier level",
     parameters: {
@@ -37,14 +48,11 @@ const COACH_FUNCTION_DECLARATIONS = [
   },
   {
     name: "generate_annotation",
-    description: "Request a visual annotation on the user's current video frame. Call this for Tier 3 corrections.",
+    description: "Capture the user's current camera frame and generate an instructional overlay showing how to correctly perform the skill. Use when the user asks for guidance, asks how to do something, or when a visual aid would help.",
     parameters: {
       type: "object",
-      properties: {
-        correction: { type: "string", description: "What needs to be corrected" },
-        bodyPart: { type: "string", description: "The body part or tool to annotate" },
-      },
-      required: ["correction"],
+      properties: {},
+      required: [],
     },
   },
   {
@@ -78,9 +86,13 @@ function SessionContent() {
 
   const [showVisualAid, setShowVisualAid] = useState<"none" | "annotated" | "video">("none");
   const [annotatedFrameUrl, setAnnotatedFrameUrl] = useState<string | null>(null);
+  const [visualAidType, setVisualAidType] = useState<"correction" | "instruction">("correction");
 
   const [coachPhase, setCoachPhase] = useState<"off" | "connecting" | "live" | "error">("off");
   const [coachError, setCoachError] = useState<string | null>(null);
+
+  const [photoSync, setPhotoSync] = useState<"idle" | "syncing" | "done" | "error">("idle");
+  const [photoSyncMsg, setPhotoSyncMsg] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -89,10 +101,16 @@ function SessionContent() {
   const playbackRef = useRef<PcmPlaybackScheduler | null>(null);
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const goodFormCaptureCount = useRef(0);
+  const skillRef = useRef("the skill");
+  const sessionId = useRef(
+    new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+  );
 
   useEffect(() => {
     if (querySkill?.trim()) {
       setSkill(querySkill);
+      skillRef.current = querySkill;
       return;
     }
 
@@ -102,6 +120,7 @@ function SessionContent() {
       const intake = JSON.parse(intakeRaw) as { skill?: string };
       if (intake.skill?.trim()) {
         setSkill(intake.skill);
+        skillRef.current = intake.skill;
       }
     } catch {
       // fall back to default label
@@ -142,6 +161,33 @@ function SessionContent() {
     return () => clearInterval(interval);
   }, [isPaused]);
 
+  // ── Capture current frame as base64 ──
+  const captureFrameBase64 = useCallback((quality = 0.9): string | null => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return null;
+    if (!canvasRef.current) canvasRef.current = document.createElement("canvas");
+    const c = canvasRef.current;
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext("2d")?.drawImage(video, 0, 0);
+    return c.toDataURL("image/jpeg", quality).split(",")[1];
+  }, []);
+
+  // ── Sync photo to Google Photos silently (no UI spinner for auto-captures) ──
+  const syncPhotoSilent = useCallback(async (label: string, skillName: string) => {
+    const b64 = captureFrameBase64(0.85);
+    if (!b64) return;
+    try {
+      await fetch("/api/photos/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frameBase64: b64, skill: skillName, label, sessionId: sessionId.current }),
+      });
+    } catch {
+      // Silent — never block coaching flow
+    }
+  }, [captureFrameBase64]);
+
   // ── Stop media helpers ──
   const stopMedia = useCallback(async () => {
     if (videoTimerRef.current) { clearInterval(videoTimerRef.current); videoTimerRef.current = null; }
@@ -170,25 +216,44 @@ function SessionContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ tier, description, timestamp: new Date().toISOString() }),
           }).catch(() => {});
+          // ── Auto-capture based on coaching tier ──
+          if (tier === 2) {
+            void syncPhotoSilent(`Mistake: ${description}`, skillRef.current);
+          } else if (tier === 3) {
+            void syncPhotoSilent(`Visual correction: ${description}`, skillRef.current);
+          } else if (tier === 4) {
+            void syncPhotoSilent(`Tutorial moment: ${description}`, skillRef.current);
+          } else if (tier === 1) {
+            goodFormCaptureCount.current += 1;
+            if (goodFormCaptureCount.current % 4 === 0) {
+              void syncPhotoSilent(`Good form: ${description}`, skillRef.current);
+            }
+          }
           break;
         }
         case "generate_annotation": {
-          const video = videoRef.current;
-          if (!video || video.videoWidth === 0) break;
-          if (!canvasRef.current) canvasRef.current = document.createElement("canvas");
-          const canvas = canvasRef.current;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          canvas.getContext("2d")?.drawImage(video, 0, 0);
-          const frameBase64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+          const b64 = captureFrameBase64(0.85);
+          if (!b64) break;
           try {
             const res = await fetch("/api/annotate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ frameBase64, correction: call.args.correction, bodyPart: call.args.bodyPart }),
+              body: JSON.stringify({ frameBase64: b64, skill: skillRef.current }),
             });
             const { imageUrl } = await res.json();
-            if (imageUrl) { setAnnotatedFrameUrl(imageUrl); setShowVisualAid("annotated"); }
+            if (imageUrl) {
+              setAnnotatedFrameUrl(imageUrl);
+              setShowVisualAid("annotated");
+              setVisualAidType("instruction");
+              const annotatedBase64 = imageUrl.split(",")[1];
+              if (annotatedBase64) {
+                void fetch("/api/photos/upload", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ frameBase64: annotatedBase64, skill: skillRef.current, label: "Annotation", sessionId: sessionId.current }),
+                }).catch(() => {});
+              }
+            }
           } catch (err) {
             console.error("[session] Annotation failed:", err);
           }
@@ -199,6 +264,33 @@ function SessionContent() {
           setCurrentMessage(`Watch this technique: ${String(call.args.reason ?? "")}`);
           setCurrentTier(4);
           break;
+        case "capture_and_sync_photo": {
+          const snapBase64 = captureFrameBase64(0.9);
+          const snapLabel = String(call.args.label ?? "Coaching screenshot");
+          if (!snapBase64) break;
+          setPhotoSync("syncing");
+          setPhotoSyncMsg(null);
+          try {
+            const res = await fetch("/api/photos/upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ frameBase64: snapBase64, skill: skillRef.current, label: snapLabel, sessionId: sessionId.current }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              setPhotoSync("done");
+              setPhotoSyncMsg("Saved to Google Photos");
+            } else {
+              setPhotoSync("error");
+              setPhotoSyncMsg(data.error || "Photo sync failed");
+            }
+          } catch (err: unknown) {
+            setPhotoSync("error");
+            setPhotoSyncMsg(err instanceof Error ? err.message : "Photo sync failed");
+          }
+          setTimeout(() => setPhotoSync("idle"), 5000);
+          break;
+        }
       }
     }
     clientRef.current?.sendToolResponse(calls);
@@ -232,7 +324,14 @@ function SessionContent() {
 
       const systemPrompt =
         sessionStorage.getItem("systemPrompt") ||
-        `You are a real-time coaching assistant watching the user practice ${skill} via their camera. Give specific, concise spoken feedback. Call log_observation for every correction. Call generate_annotation when showing a visual correction. Be encouraging and specific.`;
+        `You are a real-time coaching assistant watching the user practice ${skillRef.current} via their camera. Give specific, concise spoken feedback.
+
+Function calling rules:
+- Call log_observation for EVERY piece of feedback (tier 1=good form, 2=verbal correction, 3=visual correction, 4=tutorial).
+- Call generate_annotation when the user says things like "show me what I'm doing wrong", "annotate my form", "highlight my mistake", or when a visual correction on their current frame would help.
+- Call generate_instruction when the user says things like "show me how", "what should I do", "demonstrate the technique", "how do I do this", or when positive instructional guidance on their current frame would help.
+- Call capture_and_sync_photo when the user asks to save/capture/screenshot a moment.
+- Be encouraging and specific.`;
 
       const playback = new PcmPlaybackScheduler(24_000);
       playbackRef.current = playback;
@@ -291,7 +390,38 @@ function SessionContent() {
 
         onInterrupted: () => playbackRef.current?.interrupt(),
         onToolCall: handleToolCall,
-        onOutputTranscript: (text) => { if (text.trim()) setCurrentMessage(text); },
+        onInputTranscript: (text, finished) => {
+          if (finished) {
+            void syncPhotoSilent("User spoke", skillRef.current);
+
+            // Keyword-triggered annotation — fires directly without waiting for Gemini
+            const lower = text.toLowerCase();
+            const wantsAnnotation = /show me how|what should i|how do i|demonstrate|correct form|proper form|how to do|guide me|show me what|annotate|fix my form|what am i doing wrong/.test(lower);
+
+            if (wantsAnnotation) {
+              const b64 = captureFrameBase64(0.85);
+              if (b64) {
+                void fetch("/api/annotate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ frameBase64: b64, skill: skillRef.current }),
+                }).then((r) => r.json()).then(({ imageUrl }) => {
+                  if (imageUrl) {
+                    setAnnotatedFrameUrl(imageUrl);
+                    setShowVisualAid("annotated");
+                    setVisualAidType("instruction");
+                  }
+                }).catch(() => {});
+              }
+            }
+          }
+        },
+        onOutputTranscript: (text, finished) => {
+          if (text.trim()) setCurrentMessage(text);
+          if (finished) {
+            void syncPhotoSilent("Coach spoke", skillRef.current);
+          }
+        },
 
         onError: (msg) => {
           console.error("[session] Gemini error:", msg);
@@ -382,6 +512,21 @@ function SessionContent() {
                 <span>Live</span>
               </div>
             )}
+            {photoSync === "syncing" && (
+              <div className="session-rec-badge" style={{ right: "3rem", background: "rgba(59,130,246,0.85)" }}>
+                <span>📸 Saving…</span>
+              </div>
+            )}
+            {photoSync === "done" && (
+              <div className="session-rec-badge" style={{ right: "3rem", background: "rgba(34,197,94,0.85)" }}>
+                <span>✓ {photoSyncMsg ?? "Saved to Google Photos"}</span>
+              </div>
+            )}
+            {photoSync === "error" && (
+              <div className="session-rec-badge" style={{ right: "3rem", background: "rgba(239,68,68,0.85)" }}>
+                <span>⚠ {photoSyncMsg ?? "Sync failed"}</span>
+              </div>
+            )}
             <div className={`session-placeholder__frame ${camOn ? "session-placeholder__frame--live" : ""}`}>
               {camOn ? (
                 <video ref={videoRef} autoPlay playsInline muted className="session-camera" />
@@ -402,7 +547,11 @@ function SessionContent() {
           {showVisualAid !== "none" ? (
             <section className="session-correction-card" aria-label="Annotated still">
               <div className="session-correction-card__head">
-                <span>{showVisualAid === "video" ? "Tutorial cue" : "Guidance still"}</span>
+                <span>
+                  {showVisualAid === "video"
+                    ? "📹 Tutorial cue"
+                    : "🎯 Ideal form — compare to yourself"}
+                </span>
                 <button
                   type="button"
                   className="btn btn--ghost"
@@ -411,27 +560,25 @@ function SessionContent() {
                     setAnnotatedFrameUrl(null);
                   }}
                 >
-                  Close
+                  ✕
                 </button>
               </div>
               <div className="session-correction-card__body">
                 {showVisualAid === "annotated" && annotatedFrameUrl ? (
                   <img
                     src={annotatedFrameUrl}
-                    alt="Model-annotated form correction"
+                    alt={visualAidType === "instruction" ? "Instructional technique guide" : "Form correction annotation"}
                     className="session-correction-card__img"
                   />
                 ) : (
                   <p className="session-correction-card__notes">
                     {showVisualAid === "video"
-                      ? "Gemini suggested a tutorial intervention. The live session can point to a reference clip when a stronger reset is needed."
+                      ? "Gemini suggested a tutorial reference."
                       : "Generating annotation…"}
                   </p>
                 )}
                 <p className="session-correction-card__notes">
-                  {currentTier === 4
-                    ? "Tier 4 intervention: watch the reference and resume practice."
-                    : "Tier 3 intervention: compare your frame to the correction and retry the movement."}
+                  Compare your live camera to this reference and adjust your form to match.
                 </p>
               </div>
             </section>

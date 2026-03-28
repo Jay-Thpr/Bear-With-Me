@@ -888,10 +888,15 @@ body {
   line-height: 1.45;
   color: var(--text-soft);
 }
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 .session-correction-card {
   border-radius: 24px;
   overflow: hidden;
   background: linear-gradient(145deg, #fffdf5 0%, #fffaea 100%);
+  animation: slideInRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
   border: 1px solid rgba(232, 213, 165, 0.4);
   box-shadow: 0 8px 32px rgba(180, 160, 100, 0.12);
   display: flex;
