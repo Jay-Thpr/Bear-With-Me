@@ -1784,9 +1784,8 @@
 }
 
 .level-up__compare {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 1rem;
   padding: 1.5rem;
   border-radius: 24px;
@@ -1799,61 +1798,70 @@
 
 @media (min-width: 700px) {
   .level-up__compare {
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.75rem 0.5rem;
   }
 }
 
-.level-up__column {
+.level-up__pane {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.65rem;
-  flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
-.level-up__column-label {
+.level-up__pane-heading {
+  margin: 0;
+  width: 100%;
+  font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-align: center;
 }
 
-.level-up__column-label--new {
+.level-up__pane-heading--new {
   color: #5a8068;
 }
 
-.level-up__avatar-card {
+.level-up__figure {
   position: relative;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  padding: 1rem 1rem 0.5rem;
+  width: 100%;
+  min-height: 7.5rem;
 }
 
-.level-up__avatar-img {
+.level-up__figure-img {
   display: block;
-  width: min(140px, 100%);
+  width: 140px;
+  max-width: min(140px, 100%);
   height: auto;
   image-rendering: crisp-edges;
+  flex-shrink: 0;
 }
 
-.level-up__avatar-card--glow {
-  filter: drop-shadow(0 8px 24px rgba(136, 165, 148, 0.25));
-}
-
-.level-up__avatar-with-item {
-  position: relative;
+.level-up__figure--glow {
+  display: inline-flex;
+  width: auto;
+  min-height: unset;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 8px 28px rgba(136, 165, 148, 0.28);
+  border-radius: 20px;
+  padding: 0.35rem 0.35rem 0.5rem;
 }
 
 .level-up__new-item {
   position: absolute;
-  bottom: 0.15rem;
-  right: -0.25rem;
+  bottom: 0.35rem;
+  right: 0.15rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1881,9 +1889,11 @@
 
 .level-up__unlock-name {
   margin: 0;
+  width: 100%;
   font-size: 0.95rem;
   font-weight: 700;
   color: #5a8068;
+  text-align: center;
 }
 
 .level-up__lvl-pill {

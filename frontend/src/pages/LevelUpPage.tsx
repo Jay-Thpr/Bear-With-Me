@@ -4,8 +4,10 @@ import { ArrowRight, Sparkles } from 'lucide-react'
 import type { SkillOut } from '../api/skills'
 import './Page.css'
 
-/** Served from `public/volley_bear.png` */
-const LEVEL_UP_AVATAR_SRC = '/volley_bear.png'
+/** Before level-up: plain bear (no volleyball). Served from `public/bear-character.png`. */
+const LEVEL_UP_BEAR_BEFORE_SRC = '/bear-character.png'
+/** After level-up: bear with volleyball. Served from `public/volley_bear.png`. */
+const LEVEL_UP_BEAR_AFTER_SRC = '/volley_bear.png'
 
 type LevelUpState = {
   durationSec?: number
@@ -32,7 +34,6 @@ export function LevelUpPage() {
   const skillLabel = state.skillLabel ?? 'Your skill'
   const skillId = state.skillId
   const skill = state.skill
-  const levelUps = state.level_ups ?? 0
   const coachNote = state.coach_note
   const progressDelta = state.progress_delta
   const masteredDelta = state.mastered_delta
@@ -52,10 +53,7 @@ export function LevelUpPage() {
     }
   }, [])
 
-  const nextLevel = skill?.stats_level ?? 1
-  const prevLevel = Math.max(1, nextLevel - levelUps)
-  const newItemLabel = 'Chef’s pan'
-  const leveledUp = levelUps > 0
+  const newItemLabel = 'Volleyball'
   const recap =
     coachNote && coachNote.trim().length > 0 ? coachNote.trim() : MOCK_SUMMARY
 
@@ -83,83 +81,60 @@ export function LevelUpPage() {
           <Sparkles className="level-up__sparkle" aria-hidden />
           <span className="level-up__kicker">Session complete</span>
         </div>
-        <h1 className="level-up__title">{leveledUp ? 'Level up!' : 'Nice work!'}</h1>
+        <h1 className="level-up__title">Level up!</h1>
         <p className="level-up__subtitle">
-          {leveledUp ? (
-            <>
-              You reached <strong>level {nextLevel}</strong> in {skillLabel}. Here’s your hero with a
-              new gear unlock.
-            </>
-          ) : (
-            <>
-              You practiced <strong>{skillLabel}</strong>
-              {skill != null ? (
-                <>
-                  {' '}
-                  — <strong>{Math.round(skill.stats_progress_percent)}%</strong> toward level{' '}
-                  {nextLevel + 1}.
-                </>
-              ) : (
-                '.'
-              )}
-            </>
-          )}
+          You reached <strong>level 2</strong> in {skillLabel}. Here’s your hero with a new gear
+          unlock.
         </p>
       </div>
 
       <div className="level-up__compare" aria-label="Avatar before and after level up">
-        <div className="level-up__column">
-          <span className="level-up__column-label">Your hero now</span>
-          <div className="level-up__avatar-card">
+        <section className="level-up__pane" aria-labelledby="level-up-before-heading">
+          <h2 id="level-up-before-heading" className="level-up__pane-heading">
+            Your hero now
+          </h2>
+          <div className="level-up__figure">
             <img
-              src={LEVEL_UP_AVATAR_SRC}
-              alt="Volley bear mascot"
-              className="level-up__avatar-img"
+              key="level-up-before"
+              src={LEVEL_UP_BEAR_BEFORE_SRC}
+              alt="Bear mascot, level 1"
+              className="level-up__figure-img"
               width={120}
               height={120}
+              draggable={false}
             />
-            <span className="level-up__lvl-pill">Lv. {prevLevel}</span>
           </div>
-        </div>
+          <span className="level-up__lvl-pill">Lv. 1</span>
+        </section>
 
         <div className="level-up__arrow-wrap" aria-hidden>
           <ArrowRight className="level-up__arrow" strokeWidth={2.5} />
         </div>
 
-        <div className="level-up__column level-up__column--next">
-          <span className="level-up__column-label level-up__column-label--new">
-            {leveledUp ? 'After unlock' : 'Current rank'}
-          </span>
-          <div
-            className={`level-up__avatar-card${leveledUp ? ' level-up__avatar-card--glow' : ''}`}
-          >
-            <div className="level-up__avatar-with-item">
-              <img
-                src={LEVEL_UP_AVATAR_SRC}
-                alt="Volley bear mascot"
-                className="level-up__avatar-img"
-                width={120}
-                height={120}
-              />
-              {leveledUp ? (
-                <div className="level-up__new-item" title={`New: ${newItemLabel}`}>
-                  <span className="level-up__new-item-emoji" aria-hidden>
-                    🍳
-                  </span>
-                  <span className="level-up__new-item-caption">New</span>
-                </div>
-              ) : null}
+        <section className="level-up__pane level-up__pane--after" aria-labelledby="level-up-after-heading">
+          <h2 id="level-up-after-heading" className="level-up__pane-heading level-up__pane-heading--new">
+            After unlock
+          </h2>
+          <div className="level-up__figure level-up__figure--glow">
+            <img
+              key="level-up-after"
+              src={LEVEL_UP_BEAR_AFTER_SRC}
+              alt="Bear mascot with volleyball, level 2"
+              className="level-up__figure-img"
+              width={120}
+              height={120}
+              draggable={false}
+            />
+            <div className="level-up__new-item" title={`New: ${newItemLabel}`}>
+              <span className="level-up__new-item-emoji" aria-hidden>
+                🏐
+              </span>
+              <span className="level-up__new-item-caption">New</span>
             </div>
-            <span
-              className={`level-up__lvl-pill${leveledUp ? ' level-up__lvl-pill--up' : ''}`}
-            >
-              Lv. {nextLevel}
-            </span>
           </div>
-          <p className="level-up__unlock-name">
-            {leveledUp ? newItemLabel : `Level ${nextLevel} learner`}
-          </p>
-        </div>
+          <span className="level-up__lvl-pill level-up__lvl-pill--up">Lv. 2</span>
+          <p className="level-up__unlock-name">{newItemLabel}</p>
+        </section>
       </div>
 
       <section className="level-up__section" aria-labelledby="session-summary-heading">
