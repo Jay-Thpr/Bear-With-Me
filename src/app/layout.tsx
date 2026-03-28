@@ -1,33 +1,31 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Press_Start_2P, Outfit } from "next/font/google";
 import "./globals.css";
-import Header from "@/components/Header";
 import AuthProvider from "@/components/AuthProvider";
 
-const inter = Inter({
+const pressStart2P = Press_Start_2P({
+  weight: "400",
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-pixel",
+  display: "swap",
+});
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  variable: "--font-ui",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Glitch — Real-Time Self-Training Coach",
-  description: "AI-powered live video coaching that gets smarter about you over time",
+  title: "Skill Quest — Real-Time Coaching",
+  description: "Research-backed coaching, live feedback, and a pixel hero that grows with you.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} dark`}>
-      <body className="bg-zinc-950 font-sans antialiased text-zinc-50 flex flex-col min-h-screen">
-        <AuthProvider>
-          <Header />
-          <main className="flex-1 flex flex-col pt-[88px]">
-            {children}
-          </main>
-        </AuthProvider>
+    <html lang="en" className={`${pressStart2P.variable} ${outfit.variable} dark`}>
+      <body className="min-h-screen flex flex-col antialiased">
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
