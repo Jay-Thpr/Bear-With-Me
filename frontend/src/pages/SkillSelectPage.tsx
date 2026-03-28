@@ -559,19 +559,26 @@ export function SkillSelectPage() {
   const userSlots: SkillSlot[] = useMemo(() => {
     /** Only skills that no preset ring already represents (avoid duplicate bubbles above the arena). */
     const orphans = apiSkills.filter((s) => !skillClaimedByPresetRing(apiSkills, s))
-    return orphans.slice(0, 8).map((s, i) => ({
-      id: s.id,
-      type: `user-${s.id}`,
-      label: s.title?.trim() ? s.title.trim() : 'Saved skill',
-      icon: 'chef' as IconName,
-      position: {
-        x: -120 + (i % 4) * 80,
-        y: -200,
-      },
-      color: 'primary' as SlotColor,
-      popularity: 100,
-      source: 'user' as const,
-    }))
+    /** Wide horizontal step so labels (e.g. under generated skills) do not collide. */
+    const colGapPx = 168
+    const rowGapPx = 104
+    return orphans.slice(0, 8).map((s, i) => {
+      const col = i % 4
+      const row = Math.floor(i / 4)
+      return {
+        id: s.id,
+        type: `user-${s.id}`,
+        label: s.title?.trim() ? s.title.trim() : 'Saved skill',
+        icon: 'chef' as IconName,
+        position: {
+          x: -((4 - 1) * colGapPx) / 2 + col * colGapPx,
+          y: -200 + row * rowGapPx,
+        },
+        color: 'primary' as SlotColor,
+        popularity: 100,
+        source: 'user' as const,
+      }
+    })
   }, [apiSkills])
 
   const presetSlotsWithLabels: SkillSlot[] = useMemo(() => {
