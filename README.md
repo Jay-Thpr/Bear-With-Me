@@ -122,35 +122,57 @@ Start camera and microphone, connect to Gemini Live, and receive spoken realtime
 
 ## Architecture
 
-The demo is built around a single end-to-end technical loop: generate skill context, inject it into a live Gemini session, capture visual corrections when needed, and persist the outcome for the next session.
+The system has three main phases: authentication, skill setup, and live coaching. Each phase involves parallel processes and integrates with Google Cloud services.
 
 ```mermaid
-flowchart TD
-    A[User selects skill and goal] --> B[Frontend onboarding flow]
-    B --> C[POST /api/skills/create-with-research]
-    C --> D[Gemini research dossier generation]
-    D --> E[(Skill + research stored in DB)]
+flowchart LR
+    subgraph Auth["🔐 Authentication"]
+        A1[User visits app] --> A2[Google OAuth login]
+        A2 --> A3[Token exchange]
+        A3 --> A4[(Encrypted credentials<br/>stored)]
+    end
 
-    E --> F[User starts live session]
-    F --> G[Frontend requests /api/live/ephemeral-token]
-    G --> H[Backend builds Live system instruction]
-    H --> I[Research digest + stats + recent summaries + progress events]
-    I --> J[Gemini Live session]
+    subgraph Setup["📚 Skill Setup"]
+        S1[Create skill + goal] --> S2[Gemini generates<br/>research dossier]
+        S2 --> S3[(Skill + research<br/>in DB)]
+        S3 --> S4[Dashboard shows<br/>level & stats]
+    end
 
-    J --> K[Realtime voice coaching]
-    J --> L{Need visual correction?}
-    L -->|Yes| M[Capture current video frame]
-    M --> N[POST /api/annotations/form-correction]
-    N --> O[Gemini image model generates annotated still]
-    O --> P[Frontend displays correction image]
-    P --> Q[Optional: upload to Google Photos]
+    subgraph Session["🎥 Live Coaching Session"]
+        direction TB
+        L1[Start session] --> L2[Mint ephemeral<br/>Live token]
+        L2 --> L3[Assemble system<br/>instruction from DB]
+        L3 --> L4[Connect Gemini Live<br/>+ camera + mic]
 
-    K --> R[User ends session]
-    P --> R
-    R --> S[POST /api/skills/:id/complete-session]
-    S --> T[Gemini estimates progress delta + coach note]
-    T --> U[(Updated stats + progress event + session summary)]
-    U --> V[Export session summary to Google Docs]
+        L4 --> L5A[Voice coaching]
+        L4 --> L5B{Visual<br/>correction?}
+
+        L5B -->|Yes| L6[Capture frame]
+        L6 --> L7[Gemini image model<br/>annotates]
+        L7 --> L8[Display correction]
+        L8 --> L9A[Upload to<br/>Google Photos]
+
+        L5A --> L10[End session]
+        L8 --> L10
+        L10 --> L11[Gemini summarizes<br/>progress]
+    end
+
+    subgraph Persist["💾 Persistence"]
+        P1[(Stats updated)]
+        P2[(Session summary)]
+        P3[Export to<br/>Google Docs]
+    end
+
+    A4 --> S1
+    S4 --> L1
+    L11 --> P1
+    L11 --> P2
+    P2 --> P3
+
+    style Auth fill:#e3f2fd
+    style Setup fill:#f3e5f5
+    style Session fill:#fff3e0
+    style Persist fill:#e8f5e9
 ```
 
 ### Key Technical Decisions
@@ -217,7 +239,7 @@ GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
 GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview
 GEMINI_RESEARCH_MODEL=gemini-3-flash-preview
 
-# Google OAuth (required for new_start_zlb)
+# Google OAuth (required)
 GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-your_client_secret
 GOOGLE_REDIRECT_URI=http://localhost:5173/auth/callback
