@@ -1,30 +1,236 @@
-# Skill Quest (AI Skill Learner)
+# Bear With Me
 
-Hackathon mode: **FastAPI** backend + **Vite React** web app for an AI coaching flow (research → live session → summaries). **No sign-in** — skills, research, and progress live in a **shared pool** in the database (everyone sees and updates the same catalog). Gemini Live wiring is unchanged.
+Your AI coach for real-world skills.
+
+![Bear With Me hero](screenshots/hero-banner.png)
+
+Bear With Me is a multimodal coaching app that helps learners practice real skills with live feedback, visual corrections, and persistent progression. Instead of acting like a generic chat assistant, it researches a skill, launches a live coaching session, and generates annotated feedback directly on the learner's own practice footage.
+
+Hackathon mode on this branch uses a FastAPI backend, a Vite + React frontend, Gemini Live for realtime coaching, Gemini image generation for annotated stills, and a shared public skill pool stored in SQLite by default.
+
+## What It Does
+
+- Create a skill and define a concrete learning goal.
+- Generate a Gemini research dossier for that skill.
+- Start a live coaching session with camera and microphone.
+- Receive spoken feedback in realtime.
+- Capture annotated stills when visual correction is more useful than verbal guidance.
+- Persist session summaries and progression across practice sessions.
+
+## The Problem
+
+![The Problem](screenshots/problem-slide.png)
+
+Learning real-world skills still has three major gaps:
+
+- YouTube tutorials are broad, one-way, and not personalized to what you are doing wrong right now.
+- Human coaches are powerful, but expensive, scarce, and not always available on demand.
+- Current AI tutors are usually chat-first products with weak connection to embodied practice.
+
+For skills like cooking, movement, music posture, or other physical techniques, the hard part is not access to information. The hard part is getting timely, specific feedback while practicing.
+
+## Our Solution
+
+![Our Solution](screenshots/solution-slide.png)
+
+Bear With Me is a generalized coaching engine for skill-building.
+
+The system first creates a structured knowledge base for the selected skill, then uses that context during a live Gemini session to coach the learner in real time. When words are not enough, it captures a still from the learner's own video and generates visual corrections directly on top of the frame.
+
+That creates a tighter learning loop:
+
+1. Research the skill.
+2. Coach the learner live.
+3. Generate visual corrections when needed.
+4. Save progress and carry context forward to the next session.
+
+## Why It’s Different
+
+- Research-first coaching: the app creates a skill dossier before coaching instead of relying on a generic prompt.
+- Live multimodal feedback: the coach responds to camera and microphone input, not just text.
+- Visual correction on your own footage: annotated stills are generated from the learner's actual frame.
+- Persistent progression: sessions update a stored journey with level, streak, practice time, and summaries.
+- Generalizable engine: the architecture is meant to support many skill domains, even though the current demo is strongest for cooking / knife skills.
+
+## Demo Flow
+
+### 0. Pick a focus area
+
+The experience starts with a playful skill picker that makes the product feel like a guided journey rather than a generic form app.
+
+![Skill picker](screenshots/skill-select-arena.png)
+
+### 1. Create your skill
+
+The learner enters a skill, a concrete goal, and a starting level. The backend generates a Gemini research dossier and persists the new skill.
+
+![Create your skill](screenshots/onboarding-flow.png)
+
+### 2. Review your journey
+
+The dashboard shows the selected skill, current level, accumulated practice, streak, and progress toward the next level.
+
+![Journey dashboard](screenshots/dashboard-journey.png)
+
+### 3. Start a live coaching session
+
+The learner starts camera and microphone, connects to Gemini Live, and receives concise realtime spoken guidance. When verbal feedback is insufficient, the app captures a still and generates a marked-up correction image showing the intended posture, grip, or motion.
+
+![Live coaching with annotated correction](screenshots/live-annotated-session.png)
+
+## How It Works
+
+The current branch implements the following pipeline:
+
+1. The user creates a skill from the frontend onboarding flow.
+2. The backend generates a research dossier with Gemini and stores it in the database.
+3. The user starts a live session for that skill.
+4. The backend mints an ephemeral Gemini Live token and assembles a skill-specific system instruction from:
+   - stored skill metadata
+   - latest research dossier
+   - recent progress events
+   - recent session summaries
+5. Gemini Live provides spoken coaching during the session.
+6. The frontend can request form correction by sending a captured video frame to the backend.
+7. The backend uses the configured Gemini image model to return an annotated still.
+8. When the session ends, the backend updates progression stats, persists a session summary, and optionally attempts Docs export.
+
+## Product Architecture
+
+### Research layer
+
+Skill creation triggers a Gemini-generated markdown dossier covering:
+
+- overview
+- core concepts
+- skill decomposition
+- milestones
+- practice design
+- common mistakes
+- resources
+- safety notes when relevant
+
+This research row becomes part of the live coaching context.
+
+### Live coaching layer
+
+The session experience combines:
+
+- browser camera + mic capture
+- Gemini Live realtime connection
+- dynamic system-instruction assembly from persisted skill memory
+- short spoken coaching responses
+
+### Visual correction layer
+
+Annotated stills are generated from the learner's own camera frame. The image model is prompted to show the corrected posture or tool position, not just overlay arrows on top of a mistake.
+
+### Persistence layer
+
+The backend stores:
+
+- skills
+- research entries
+- progress events
+- session summaries
+
+This is what allows the app to keep a memory of practice over time.
+
+## Current Tech Stack
+
+### Frontend
+
+- React
+- TypeScript
+- Vite
+- React Router
+
+### Backend
+
+- FastAPI
+- Uvicorn
+- SQLModel / SQLAlchemy
+
+### AI
+
+- Gemini Live API
+- Gemini text generation for skill research
+- Gemini image generation for annotated stills
+
+### Persistence
+
+- SQLite by default
+- Postgres-compatible deployment path via `DATABASE_URL`
+
+### Google ecosystem
+
+- Ephemeral token flow for Gemini Live
+- Session-summary export hooks for Google Docs
+
+## Current Branch Scope
+
+This branch is a hackathon-mode implementation, not a fully productized system.
+
+What is already working or concretely represented in code:
+
+- shared skill creation
+- Gemini-generated research dossiers
+- live coaching flow
+- annotated still generation
+- persistent skill stats and session summaries
+
+What is still partial, aspirational, or scaffolded relative to the broader concept:
+
+- richer multi-session personalization
+- explicit intervention-tier orchestration
+- deeper Google Workspace loop
+- grounded YouTube / Search-based research ingestion
+- broader proof across multiple skill categories
+
+## Screenshots
+
+The README uses product screenshots from [`screenshots/`](screenshots/). The strongest core assets on this branch are:
+
+- `hero-banner.png`
+- `problem-slide.png`
+- `solution-slide.png`
+- `skill-select-arena.png`
+- `onboarding-flow.png`
+- `dashboard-journey.png`
+- `live-annotated-session.png`
+
+## Repo Structure
+
+```txt
+backend/      FastAPI API, DB models, routers, Gemini services
+frontend/     React app, routes, live session UI, client-side API hooks
+screenshots/  README and demo assets
+.cursor/      Planning artifacts
+```
 
 ## Prerequisites
 
-- **Python** 3.11+ (3.12 recommended)
-- **Node.js** 20+ (LTS) and npm
+- Python 3.11+ (3.12 recommended)
+- Node.js 20+ and npm
 
-## Quickstart
+## Local Setup
 
 ### 1. Backend
 
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Optional: copy env defaults (CORS, future API keys):
+Optional:
 
 ```bash
 cp ../.env.example .env
 ```
 
-Start the API (default: [http://127.0.0.1:3000](http://127.0.0.1:3000)):
+Start the API:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 3000
@@ -34,14 +240,15 @@ Check health:
 
 ```bash
 curl -s http://127.0.0.1:3000/api/health
-# {"status":"ok"}
 ```
 
-API docs: [http://127.0.0.1:3000/docs](http://127.0.0.1:3000/docs)
+API docs:
+
+- http://127.0.0.1:3000/docs
 
 ### 2. Frontend
 
-In a **second** terminal:
+In a second terminal:
 
 ```bash
 cd frontend
@@ -49,77 +256,44 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (usually [http://localhost:5173](http://localhost:5173)). The home page calls `/api/health` through the dev proxy, so the **API: connected** pill only turns green when the backend is running.
+Open the Vite URL shown in the terminal, usually:
 
-### 3. Production build (frontend only)
+- http://localhost:5173
+
+### 3. Frontend production build
 
 ```bash
 cd frontend
 npm run build
-npm run preview   # optional: serve dist locally
+npm run preview
 ```
 
-If the app is not served from Vite’s dev server, set `VITE_API_URL` to your API base (see [.env.example](.env.example)) so the browser can reach FastAPI directly.
-
-**Render (or any static host):** For client-side routes (e.g. `/dashboard`, `/onboarding`), add a **Rewrite**: Source `/*`, Destination `/index.html` in the static site’s **Redirects / Rewrites** so deep links load the SPA ([Render docs](https://render.com/docs/redirects-rewrites)).
+If the frontend is served outside the Vite dev server, set `VITE_API_URL` so the browser can reach FastAPI directly.
 
 ## Configuration
 
-| Variable            | Where           | Purpose                                                                 |
-| ------------------- | --------------- | ----------------------------------------------------------------------- |
-| `CORS_ORIGINS`      | `backend/.env`  | Comma-separated allowed browser origins (default: `http://localhost:5173`) |
-| `GEMINI_API_KEY`    | `backend/.env`  | Server-only Gemini key; used to mint **ephemeral Live tokens** for the UI |
-| `GEMINI_LIVE_MODEL` | `backend/.env`  | Live model id (default: `gemini-3.1-flash-live-preview`; override from `scripts/check_gemini_key.py` if needed) |
-| `GEMINI_IMAGE_MODEL` | `backend/.env` | Image model for annotated stills (`POST /api/annotations/form-correction`; default: `gemini-3.1-flash-image-preview`) |
-| `GEMINI_RESEARCH_MODEL` | `backend/.env` | Text model for skill research dossiers (`POST /api/skills/create-with-research`; default: `gemini-3-flash-preview`; override from `scripts/check_gemini_key.py`) |
-| `VITE_API_URL`      | `frontend/.env` | Optional; leave empty in dev to use Vite’s `/api` proxy                 |
-| `DATABASE_URL`      | `backend/.env` | Optional; default is SQLite at `backend/data/app.db` (shared skills, research, progress) |
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `CORS_ORIGINS` | `backend/.env` | Allowed browser origins |
+| `GEMINI_API_KEY` | `backend/.env` | Server-side Gemini key |
+| `GEMINI_LIVE_MODEL` | `backend/.env` | Live model for coaching |
+| `GEMINI_IMAGE_MODEL` | `backend/.env` | Image model for annotated stills |
+| `GEMINI_RESEARCH_MODEL` | `backend/.env` | Text model for research dossiers |
+| `DATABASE_URL` | `backend/.env` | Optional DB override; defaults to SQLite |
+| `VITE_API_URL` | `frontend/.env` | Optional API base for non-dev deployments |
 
-Full list of placeholders (Gemini, optional Google legacy, etc.): [.env.example](.env.example).
+Full placeholder list:
 
-### Shared skill pool
+- [`.env.example`](.env.example)
 
-New rows use `user_sub = __shared__` in the DB. **`GET /api/skills` lists every skill** (all `user_sub` values) so older rows from per-user auth still appear. **Anyone can read, create, update, or delete any skill by id** — suitable for a public demo, not for private data.
+## Shared Skill Pool Note
 
-**Progression is unchanged:** ending a live session still calls `POST /api/skills/{id}/complete-session`, which updates **`stats_level`**, **`stats_progress_percent`** (level-ups when progress crosses 100%), **`stats_sessions`**, **`stats_practice_seconds`**, **`stats_day_streak`**, **`stats_mastered`**, and **`last_practice_at`**, and appends a **`skill_progress_event`** row (`kind: session`) plus a **`skill_session_summary`**. All of that is **`session.commit()`’d** to whatever **`DATABASE_URL`** you use (SQLite locally, Postgres/Supabase in production), so data accumulates over time the same as before—only the login gate was removed.
+This branch currently uses a shared public pool model rather than private per-user accounts. Skills, research, and progress data are persisted in the database, but there is no sign-in gate protecting individual records. That is appropriate for a hackathon demo, not for private production data.
 
-### Skill persistence (SQLite / Postgres)
+## Future Work
 
-The API stores **skills**, **research notes** (versioned per skill), and a **progress timeline**. Tables are created on startup. **No session cookies**; CORS uses `allow_credentials=False`.
-
-| Method | Path | Purpose |
-| ------ | ---- | ------- |
-| `GET` / `POST` | `/api/skills` | List or create a skill (`title`, optional `notes`) |
-| `GET` / `PATCH` / `DELETE` | `/api/skills/{skill_id}` | Read, rename/notes, or delete (cascades research + progress) |
-| `GET` / `POST` | `/api/skills/{skill_id}/research` | List research entries (newest first) or append one (`content`, optional `title`, `extra` JSON) |
-| `GET` | `/api/skills/{skill_id}/research/latest` | Latest research row (404 if none) |
-| `GET` / `POST` | `/api/skills/{skill_id}/progress` | List or append progress events (`kind`, optional `label`, `detail` JSON, `metric_value`) |
-| `POST` | `/api/skills/create-with-research` | `title`, `goal`, `level`, optional `category` — Gemini research dossier (`GEMINI_RESEARCH_MODEL`), then save skill + research |
-| `GET` | `/api/sessions` | Recent events with `kind === "session"` across all skills (convention for coaching runs) |
-
-Use [http://127.0.0.1:3000/docs](http://127.0.0.1:3000/docs) to try the API without auth.
-
-### List models for your API key
-
-From the repo root (loads `backend/.env` then `.env`):
-
-```bash
-python3 scripts/check_gemini_key.py
-python3 scripts/check_gemini_key.py --gemini-only
-```
-
-Each line shows the model id to use in config (no `models/` prefix) and `supportedGenerationMethods` (look for Live / bidirectional entries when picking `GEMINI_LIVE_MODEL`).
-
-**Security:** The browser never sees the long-lived API key. The frontend calls `POST /api/live/ephemeral-token`, receives a short-lived token, and opens the Live WebSocket with `access_token=` ([ephemeral tokens](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)). In hackathon mode this endpoint is also public — anyone who can reach your API can request ephemeral tokens (mitigate with network rules or a gateway if needed).
-
-## Project layout
-
-| Path                             | Role                                                                                        |
-| -------------------------------- | ------------------------------------------------------------------------------------------- |
-| [backend/](backend/)             | FastAPI app, routers under `app/routers/` (skills, sessions, research, live, minimal `/api/auth` stubs) |
-| [frontend/](frontend/)           | React routes + Gemini Live (mic/video, tool `request_form_correction`) + manual capture for annotated stills |
-| [.cursor/plans/](.cursor/plans/) | Product / implementation plan                                                               |
-
-## License
-
-Add a license if you open-source the repo.
+- Ground research in YouTube and Search-backed sources
+- Build a richer learner model across repeated sessions
+- Formalize intervention tiers and escalation rules
+- Expose Google Workspace artifacts more directly in the product loop
+- Demonstrate stronger cross-domain skill coverage beyond the current cooking-focused demo
