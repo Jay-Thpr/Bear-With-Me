@@ -28,6 +28,25 @@ class CharacterGenerateBody(BaseModel):
     )
 
 
+def _strip_background(raw_bytes: bytes, mime: str) -> tuple[bytes, str]:
+    prov = (settings.background_removal_provider or "rembg").strip().lower()
+    if prov == "remove_bg" and not settings.remove_bg_api_key.strip():
+        raise HTTPException(
+            status_code=503,
+            detail="BACKGROUND_REMOVAL_PROVIDER=remove_bg requires REMOVE_BG_API_KEY.",
+        )
+    try:
+        out_bytes = remove_background_png(raw_bytes, mime_type=mime)
+        return out_bytes, "image/png"
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=f"Background removal failed: {exc}",
+        ) from exc
+
+
 @router.post("/generate")
 def generate_character(body: CharacterGenerateBody) -> dict:
     """
@@ -48,23 +67,8 @@ def generate_character(body: CharacterGenerateBody) -> dict:
     out_mime = mime or "image/png"
 
     if body.remove_background:
-        prov = (settings.background_removal_provider or "rembg").strip().lower()
-        if prov == "remove_bg" and not settings.remove_bg_api_key.strip():
-            raise HTTPException(
-                status_code=503,
-                detail="BACKGROUND_REMOVAL_PROVIDER=remove_bg requires REMOVE_BG_API_KEY.",
-            )
-        try:
-            out_bytes = remove_background_png(raw_bytes, mime_type=out_mime)
-            out_mime = "image/png"
-            background_removed = True
-        except RuntimeError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(
-                status_code=502,
-                detail=f"Background removal failed: {exc}",
-            ) from exc
+        out_bytes, out_mime = _strip_background(out_bytes, out_mime)
+        background_removed = True
 
     b64 = base64.b64encode(out_bytes).decode("ascii")
     return {

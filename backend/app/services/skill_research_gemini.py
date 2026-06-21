@@ -67,6 +67,30 @@ Include these sections (use ### headings):
 Be specific to the skill and goal, not generic filler. Aim for dense, actionable content suitable for coaching and spaced repetition."""
 
 
+def _call_with_thinking_fallback(
+    client: genai.Client,
+    model: str,
+    content: types.Content,
+    config: types.GenerateContentConfig,
+) -> types.GenerateContentResponse:
+    try:
+        return client.models.generate_content(
+            model=model,
+            contents=[content],
+            config=config,
+        )
+    except Exception:
+        # Fallback: model may not support thinking_config
+        return client.models.generate_content(
+            model=model,
+            contents=[content],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=8192,
+            ),
+        )
+
+
 def generate_skill_research_dossier(
     *,
     title: str,
@@ -88,41 +112,19 @@ def generate_skill_research_dossier(
         role="user",
         parts=[types.Part.from_text(text=prompt)],
     )
-
-    thinking = types.ThinkingConfig(
-        thinking_level=types.ThinkingLevel.HIGH,
-        include_thoughts=False,
-    )
     config = types.GenerateContentConfig(
         temperature=0.7,
         max_output_tokens=8192,
-        thinking_config=thinking,
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.HIGH,
+            include_thoughts=False,
+        ),
     )
 
-    def _call(cfg: types.GenerateContentConfig | None) -> types.GenerateContentResponse:
-        return client.models.generate_content(
-            model=model,
-            contents=[user_content],
-            config=cfg,
-        )
-
-    try:
-        response = _call(config)
-    except Exception:
-        # Fallback: model may not support thinking_config
-        response = _call(
-            types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=8192,
-            ),
-        )
+    response = _call_with_thinking_fallback(client, model, user_content, config)
 
     text = _text_from_response(response)
     if not text:
         raise RuntimeError("Gemini returned no text for skill research")
 
-    meta: dict = {
-        "model": model,
-        "thinking": True,
-    }
-    return text, meta
+    return text, {"model": model, "thinking": True}

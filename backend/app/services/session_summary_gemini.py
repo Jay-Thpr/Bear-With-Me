@@ -69,7 +69,7 @@ def _parse_summary_text(text: str) -> str:
     return text[:4000].strip()
 
 
-def generate_session_summary_text(
+def _build_summary_prompt(
     *,
     skill_title: str,
     goal: str,
@@ -81,20 +81,7 @@ def generate_session_summary_text(
     level_ups: int,
     mastered_delta: int,
 ) -> str:
-    if not settings.gemini_api_key.strip():
-        return _fallback_summary(
-            skill_title=skill_title,
-            goal=goal,
-            learner_level_label=learner_level_label,
-            duration_seconds=duration_seconds,
-            session_notes=session_notes,
-            coach_note=coach_note,
-            progress_delta=progress_delta,
-            level_ups=level_ups,
-            mastered_delta=mastered_delta,
-        )
-
-    prompt = f"""Write a compact session summary for future coaching memory.
+    return f"""Write a compact session summary for future coaching memory.
 
 Skill: {skill_title}
 Goal: {goal}
@@ -110,6 +97,35 @@ Return ONLY valid JSON:
 {{
   "summary_text": "3-5 sentences max. Include what was worked on, what improved, what still matters next, and how the session affected progress."
 }}"""
+
+
+def generate_session_summary_text(
+    *,
+    skill_title: str,
+    goal: str,
+    learner_level_label: str,
+    duration_seconds: int,
+    session_notes: str | None,
+    coach_note: str,
+    progress_delta: float,
+    level_ups: int,
+    mastered_delta: int,
+) -> str:
+    kwargs = dict(
+        skill_title=skill_title,
+        goal=goal,
+        learner_level_label=learner_level_label,
+        duration_seconds=duration_seconds,
+        session_notes=session_notes,
+        coach_note=coach_note,
+        progress_delta=progress_delta,
+        level_ups=level_ups,
+        mastered_delta=mastered_delta,
+    )
+    if not settings.gemini_api_key.strip():
+        return _fallback_summary(**kwargs)
+
+    prompt = _build_summary_prompt(**kwargs)
 
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -130,14 +146,4 @@ Return ONLY valid JSON:
         raw = _extract_text(response)
         return _parse_summary_text(raw)
     except Exception:
-        return _fallback_summary(
-            skill_title=skill_title,
-            goal=goal,
-            learner_level_label=learner_level_label,
-            duration_seconds=duration_seconds,
-            session_notes=session_notes,
-            coach_note=coach_note,
-            progress_delta=progress_delta,
-            level_ups=level_ups,
-            mastered_delta=mastered_delta,
-        )
+        return _fallback_summary(**kwargs)

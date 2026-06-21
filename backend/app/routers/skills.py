@@ -92,6 +92,127 @@ def _summary_out(summary: SkillSessionSummary) -> SkillSessionSummaryOut:
     )
 
 
+def _compute_streak(skill: Skill, now: datetime) -> int:
+    today = now.date()
+    last = skill.last_practice_at
+    if last is None:
+        return 1
+    ld = last.date() if isinstance(last, datetime) else last
+    if ld == today:
+        return int(skill.stats_day_streak or 0) or 1
+    if ld == today - timedelta(days=1):
+        return int(skill.stats_day_streak or 0) + 1
+    return 1
+
+
+def _apply_session_stats(
+    skill: Skill,
+    *,
+    delta: float,
+    mastered_delta: int,
+    duration_seconds: int,
+    now: datetime,
+) -> int:
+    skill.stats_sessions = int(skill.stats_sessions or 0) + 1
+    skill.stats_practice_seconds = int(skill.stats_practice_seconds or 0) + int(duration_seconds)
+
+    p = float(skill.stats_progress_percent or 0.0) + delta
+    level_ups = 0
+    while p >= 100.0:
+        p -= 100.0
+        level_ups += 1
+    skill.stats_level = int(skill.stats_level or 1) + level_ups
+    skill.stats_progress_percent = round(p, 2)
+    skill.stats_mastered = int(skill.stats_mastered or 0) + mastered_delta
+    skill.stats_day_streak = _compute_streak(skill, now)
+    skill.last_practice_at = now
+    skill.updated_at = now
+    return level_ups
+
+
+def _try_export_to_docs(
+    session: Session,
+    summary: SkillSessionSummary,
+    skill: Skill,
+) -> str | None:
+    try:
+        export_result = export_session_summary_to_docs(
+            summary=summary,
+            skill=skill,
+            user_email=None,
+        )
+        if export_result:
+            extra = dict(summary.extra or {})
+            extra["docs_export"] = {
+                "status": "exported",
+                "document_id": export_result["document_id"],
+                "document_url": export_result["document_url"],
+            }
+            summary.extra = extra
+            session.add(summary)
+            session.commit()
+            session.refresh(summary)
+            return export_result["document_url"]
+    except Exception as exc:  # noqa: BLE001 — summary persistence remains authoritative
+        extra = dict(summary.extra or {})
+        extra["docs_export"] = {"status": "error", "error": str(exc)}
+        summary.extra = extra
+        session.add(summary)
+        session.commit()
+        session.refresh(summary)
+    return None
+
+
+def _fetch_research_for_live(
+    session: Session, skill_id: str
+) -> Optional[ResearchOut]:
+    r = session.exec(
+        select(SkillResearch)
+        .where(SkillResearch.skill_id == skill_id)
+        .order_by(SkillResearch.created_at.desc())
+        .limit(1)
+    ).first()
+    if r is None:
+        return None
+    content = r.content or ""
+    if len(content) > _RESEARCH_LIVE_CONTEXT_MAX_CHARS:
+        content = (
+            content[:_RESEARCH_LIVE_CONTEXT_MAX_CHARS]
+            + "\n\n[Research dossier truncated for live session context.]"
+        )
+    return ResearchOut(
+        id=r.id,
+        skill_id=r.skill_id,
+        title=r.title,
+        content=content,
+        extra=r.extra,
+        created_at=r.created_at,
+    )
+
+
+def _fetch_progress_events_for_live(
+    session: Session, skill_id: str
+) -> list[ProgressOut]:
+    rows = session.exec(
+        select(SkillProgressEvent)
+        .where(SkillProgressEvent.skill_id == skill_id)
+        .order_by(SkillProgressEvent.created_at.desc())
+        .limit(_PROGRESS_EVENTS_FOR_LIVE)
+    ).all()
+    return [
+        ProgressOut(
+            id=e.id,
+            skill_id=e.skill_id,
+            kind=e.kind,
+            label=e.label,
+            detail=e.detail,
+            metric_value=e.metric_value,
+            created_at=e.created_at,
+        )
+        for e in rows
+    ]
+
+
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict, include_in_schema=False)
 def list_skills(
@@ -236,36 +357,14 @@ def complete_session(
     delta = float(coach["progress_delta"])
     mastered_delta = int(coach["mastered_delta"])
 
-    skill.stats_sessions = int(skill.stats_sessions or 0) + 1
-    skill.stats_practice_seconds = int(skill.stats_practice_seconds or 0) + int(
-        body.duration_seconds,
-    )
-
-    p = float(skill.stats_progress_percent or 0.0) + delta
-    level_ups = 0
-    while p >= 100.0:
-        p -= 100.0
-        level_ups += 1
-    skill.stats_level = int(skill.stats_level or 1) + level_ups
-    skill.stats_progress_percent = round(p, 2)
-    skill.stats_mastered = int(skill.stats_mastered or 0) + mastered_delta
-
     now = _utcnow()
-    today = now.date()
-    last = skill.last_practice_at
-    if last is None:
-        streak = 1
-    else:
-        ld = last.date() if isinstance(last, datetime) else last
-        if ld == today:
-            streak = int(skill.stats_day_streak or 0) or 1
-        elif ld == today - timedelta(days=1):
-            streak = int(skill.stats_day_streak or 0) + 1
-        else:
-            streak = 1
-    skill.stats_day_streak = streak
-    skill.last_practice_at = now
-    skill.updated_at = now
+    level_ups = _apply_session_stats(
+        skill,
+        delta=delta,
+        mastered_delta=mastered_delta,
+        duration_seconds=body.duration_seconds,
+        now=now,
+    )
 
     summary_text = generate_session_summary_text(
         skill_title=skill.title,
@@ -313,35 +412,7 @@ def complete_session(
     session.refresh(skill)
     session.refresh(summary)
 
-    docs_export_url: str | None = None
-    try:
-        export_result = export_session_summary_to_docs(
-            summary=summary,
-            skill=skill,
-            user_email=None,
-        )
-        if export_result:
-            docs_export_url = export_result["document_url"]
-            extra = dict(summary.extra or {})
-            extra["docs_export"] = {
-                "status": "exported",
-                "document_id": export_result["document_id"],
-                "document_url": export_result["document_url"],
-            }
-            summary.extra = extra
-            session.add(summary)
-            session.commit()
-            session.refresh(summary)
-    except Exception as exc:  # noqa: BLE001 — summary persistence remains authoritative
-        extra = dict(summary.extra or {})
-        extra["docs_export"] = {
-            "status": "error",
-            "error": str(exc),
-        }
-        summary.extra = extra
-        session.add(summary)
-        session.commit()
-        session.refresh(summary)
+    docs_export_url = _try_export_to_docs(session, summary, skill)
 
     return SessionCompleteResponse(
         skill=_skill_out(skill),
@@ -368,50 +439,8 @@ def live_coach_context(
     for the browser to build Gemini Live system instructions.
     """
     skill = _get_skill(session, skill_id)
-
-    r_stmt = (
-        select(SkillResearch)
-        .where(SkillResearch.skill_id == skill_id)
-        .order_by(SkillResearch.created_at.desc())
-        .limit(1)
-    )
-    r = session.exec(r_stmt).first()
-    research_out: Optional[ResearchOut] = None
-    if r is not None:
-        content = r.content or ""
-        if len(content) > _RESEARCH_LIVE_CONTEXT_MAX_CHARS:
-            content = (
-                content[:_RESEARCH_LIVE_CONTEXT_MAX_CHARS]
-                + "\n\n[Research dossier truncated for live session context.]"
-            )
-        research_out = ResearchOut(
-            id=r.id,
-            skill_id=r.skill_id,
-            title=r.title,
-            content=content,
-            extra=r.extra,
-            created_at=r.created_at,
-        )
-
-    p_stmt = (
-        select(SkillProgressEvent)
-        .where(SkillProgressEvent.skill_id == skill_id)
-        .order_by(SkillProgressEvent.created_at.desc())
-        .limit(_PROGRESS_EVENTS_FOR_LIVE)
-    )
-    prog_rows = session.exec(p_stmt).all()
-    events = [
-        ProgressOut(
-            id=e.id,
-            skill_id=e.skill_id,
-            kind=e.kind,
-            label=e.label,
-            detail=e.detail,
-            metric_value=e.metric_value,
-            created_at=e.created_at,
-        )
-        for e in prog_rows
-    ]
+    research_out = _fetch_research_for_live(session, skill_id)
+    events = _fetch_progress_events_for_live(session, skill_id)
 
     return LiveCoachContextOut(
         skill=_skill_out(skill),

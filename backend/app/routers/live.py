@@ -19,6 +19,22 @@ class LiveEphemeralRequest(BaseModel):
     skill_id: str | None = None
 
 
+def _resolve_live_context(
+    session: Session,
+    skill_id: str | None,
+) -> tuple[str, str | None, list[str], bool]:
+    if skill_id:
+        skill = _get_skill(session, skill_id)
+        live_ctx = build_live_system_instruction_response(session=session, skill=skill)
+        return (
+            live_ctx.system_instruction,
+            live_ctx.source_research_id,
+            live_ctx.source_progress_event_ids,
+            live_ctx.truncated,
+        )
+    return build_generic_system_instruction(), None, [], False
+
+
 @router.get("/status")
 def live_status() -> dict[str, str | bool]:
     """Whether Live ephemeral tokens can be issued (API key present on server)."""
@@ -52,18 +68,9 @@ def issue_ephemeral_token(
         ) from exc
 
     skill_id = body.skill_id if body else None
-    if skill_id:
-        skill = _get_skill(session, skill_id)
-        live_ctx = build_live_system_instruction_response(session=session, skill=skill)
-        system_instruction = live_ctx.system_instruction
-        source_research_id = live_ctx.source_research_id
-        source_progress_event_ids = live_ctx.source_progress_event_ids
-        truncated = live_ctx.truncated
-    else:
-        system_instruction = build_generic_system_instruction()
-        source_research_id = None
-        source_progress_event_ids = []
-        truncated = False
+    system_instruction, source_research_id, source_progress_event_ids, truncated = (
+        _resolve_live_context(session, skill_id)
+    )
 
     return {
         "accessToken": access_token,

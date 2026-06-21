@@ -22,6 +22,50 @@ def _parse_json_object(text: str) -> dict:
         raise
 
 
+def _build_progress_prompt(
+    *,
+    skill_title: str,
+    goal: str,
+    learner_level_label: str,
+    duration_seconds: int,
+    session_notes: str | None,
+    current_progress_percent: float,
+    sessions_before: int,
+) -> str:
+    notes = (session_notes or "").strip() or "(no extra notes)"
+    return f"""You evaluate a single practice session for a learner.
+
+Skill: {skill_title}
+Stated goal: {goal}
+Learner band (from onboarding): {learner_level_label}
+Session length: {duration_seconds} seconds
+Sessions completed before this one: {sessions_before}
+Current progress toward next level (0-100): {current_progress_percent:.1f}
+
+Learner / coach notes from this session:
+{notes}
+
+Reply with ONLY valid JSON (no markdown fences):
+{{
+  "progress_delta": <number 0-35 — how much to ADD to their progress bar for this session>,
+  "mastered_delta": <0 or 1 — 1 only if they clearly mastered a concrete sub-skill this session>,
+  "coach_note": "<one short encouraging sentence>"
+}}
+
+Be fair: short sessions get smaller deltas; strong evidence of mastery allows larger deltas."""
+
+
+def _extract_text_from_response(response: types.GenerateContentResponse) -> str:
+    text = ""
+    for cand in response.candidates or []:
+        if not cand.content or not cand.content.parts:
+            continue
+        for part in cand.content.parts:
+            if part.text and not part.thought:
+                text += part.text
+    return text
+
+
 def estimate_session_progress_delta(
     *,
     skill_title: str,
@@ -49,28 +93,15 @@ def estimate_session_progress_delta(
 
     client = genai.Client(api_key=settings.gemini_api_key)
     model = settings.gemini_research_model.strip()
-
-    notes = (session_notes or "").strip() or "(no extra notes)"
-    prompt = f"""You evaluate a single practice session for a learner.
-
-Skill: {skill_title}
-Stated goal: {goal}
-Learner band (from onboarding): {learner_level_label}
-Session length: {duration_seconds} seconds
-Sessions completed before this one: {sessions_before}
-Current progress toward next level (0-100): {current_progress_percent:.1f}
-
-Learner / coach notes from this session:
-{notes}
-
-Reply with ONLY valid JSON (no markdown fences):
-{{
-  "progress_delta": <number 0-35 — how much to ADD to their progress bar for this session>,
-  "mastered_delta": <0 or 1 — 1 only if they clearly mastered a concrete sub-skill this session>,
-  "coach_note": "<one short encouraging sentence>"
-}}
-
-Be fair: short sessions get smaller deltas; strong evidence of mastery allows larger deltas."""
+    prompt = _build_progress_prompt(
+        skill_title=skill_title,
+        goal=goal,
+        learner_level_label=learner_level_label,
+        duration_seconds=duration_seconds,
+        session_notes=session_notes,
+        current_progress_percent=current_progress_percent,
+        sessions_before=sessions_before,
+    )
 
     response = client.models.generate_content(
         model=model,
@@ -82,13 +113,8 @@ Be fair: short sessions get smaller deltas; strong evidence of mastery allows la
         ],
         config=types.GenerateContentConfig(temperature=0.4, max_output_tokens=512),
     )
-    text = ""
-    for cand in response.candidates or []:
-        if not cand.content or not cand.content.parts:
-            continue
-        for part in cand.content.parts:
-            if part.text and not part.thought:
-                text += part.text
+
+    text = _extract_text_from_response(response)
     if not text.strip():
         raise RuntimeError("Gemini returned no text for session progress")
 

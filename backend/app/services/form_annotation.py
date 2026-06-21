@@ -65,6 +65,36 @@ def _build_user_prompt(
     return PROMPT_NO_COACH_TEXT.format(markup_style=MARKUP_STYLE)
 
 
+def _parse_image_model_response(
+    response: types.GenerateContentResponse,
+) -> tuple[bytes, str, str]:
+    cands = response.candidates
+    if not cands:
+        raise RuntimeError("No candidates in image model response")
+    content = cands[0].content
+    if not content or not content.parts:
+        raise RuntimeError("Empty content from image model")
+
+    notes_parts: list[str] = []
+    image_out: bytes | None = None
+    out_mime = "image/png"
+
+    for part in content.parts:
+        if part.text:
+            notes_parts.append(part.text)
+        if part.inline_data and part.inline_data.data:
+            image_out = part.inline_data.data
+            if part.inline_data.mime_type:
+                out_mime = part.inline_data.mime_type
+
+    if image_out is None:
+        raise RuntimeError(
+            "Model returned no image. Try a clearer frame or a different GEMINI_IMAGE_MODEL.",
+        )
+
+    return image_out, out_mime, "\n".join(notes_parts).strip()
+
+
 def annotate_form_photo(
     image_bytes: bytes,
     mime_type: str,
@@ -79,7 +109,6 @@ def annotate_form_photo(
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=settings.gemini_api_key)
-
     prompt = _build_user_prompt(focus=focus, coaching_hint=coaching_hint)
 
     parts: list[types.Part] = [
@@ -99,32 +128,7 @@ def annotate_form_photo(
         ),
     )
 
-    notes_parts: list[str] = []
-    image_out: bytes | None = None
-    out_mime = "image/png"
-
-    cands = response.candidates
-    if not cands:
-        raise RuntimeError("No candidates in image model response")
-
-    content = cands[0].content
-    if not content or not content.parts:
-        raise RuntimeError("Empty content from image model")
-
-    for part in content.parts:
-        if part.text:
-            notes_parts.append(part.text)
-        if part.inline_data and part.inline_data.data:
-            image_out = part.inline_data.data
-            if part.inline_data.mime_type:
-                out_mime = part.inline_data.mime_type
-
-    if image_out is None:
-        raise RuntimeError(
-            "Model returned no image. Try a clearer frame or a different GEMINI_IMAGE_MODEL.",
-        )
-
-    return image_out, out_mime, "\n".join(notes_parts).strip()
+    return _parse_image_model_response(response)
 
 
 def decode_base64_image(data: str) -> bytes:

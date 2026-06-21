@@ -48,6 +48,25 @@ def _migrate_sqlite_skill_context(engine: Engine) -> None:
         conn.commit()
 
 
+def _build_skill_stat_alters(cols: set[str]) -> list[str]:
+    alters: list[str] = []
+    if "stats_sessions" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_sessions INTEGER DEFAULT 0")
+    if "stats_practice_seconds" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_practice_seconds INTEGER DEFAULT 0")
+    if "stats_level" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_level INTEGER DEFAULT 1")
+    if "stats_progress_percent" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_progress_percent REAL DEFAULT 0")
+    if "stats_mastered" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_mastered INTEGER DEFAULT 0")
+    if "stats_day_streak" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN stats_day_streak INTEGER DEFAULT 0")
+    if "last_practice_at" not in cols:
+        alters.append("ALTER TABLE skill ADD COLUMN last_practice_at DATETIME")
+    return alters
+
+
 def _migrate_sqlite_skill_stats(engine: Engine) -> None:
     """Add journey stat columns on skill."""
     url = settings.database_url_resolved
@@ -58,23 +77,7 @@ def _migrate_sqlite_skill_stats(engine: Engine) -> None:
         if not insp.has_table("skill"):
             return
         cols = {c["name"] for c in insp.get_columns("skill")}
-        alters: list[str] = []
-        if "stats_sessions" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN stats_sessions INTEGER DEFAULT 0")
-        if "stats_practice_seconds" not in cols:
-            alters.append(
-                "ALTER TABLE skill ADD COLUMN stats_practice_seconds INTEGER DEFAULT 0",
-            )
-        if "stats_level" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN stats_level INTEGER DEFAULT 1")
-        if "stats_progress_percent" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN stats_progress_percent REAL DEFAULT 0")
-        if "stats_mastered" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN stats_mastered INTEGER DEFAULT 0")
-        if "stats_day_streak" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN stats_day_streak INTEGER DEFAULT 0")
-        if "last_practice_at" not in cols:
-            alters.append("ALTER TABLE skill ADD COLUMN last_practice_at DATETIME")
+        alters = _build_skill_stat_alters(cols)
         for stmt in alters:
             conn.execute(text(stmt))
         if alters:

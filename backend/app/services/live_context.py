@@ -41,11 +41,11 @@ def build_generic_system_instruction() -> str:
     )
 
 
-def build_live_system_instruction_for_skill(
+def _fetch_skill_context_data(
     *,
     session: Session,
     skill: Skill,
-) -> LiveInstructionBundle:
+) -> tuple[SkillResearch | None, list[SkillSessionSummary], list[SkillProgressEvent]]:
     research_row = session.exec(
         select(SkillResearch)
         .where(SkillResearch.skill_id == skill.id)
@@ -66,6 +66,18 @@ def build_live_system_instruction_for_skill(
         .order_by(SkillProgressEvent.created_at.desc())
         .limit(MAX_RECENT_EVENTS)
     ).all()
+
+    return research_row, list(summaries), list(progress_events)
+
+
+def build_live_system_instruction_for_skill(
+    *,
+    session: Session,
+    skill: Skill,
+) -> LiveInstructionBundle:
+    research_row, summaries, progress_events = _fetch_skill_context_data(
+        session=session, skill=skill
+    )
 
     truncated = False
     sections: list[str] = [BASE_COACH_SYSTEM]
