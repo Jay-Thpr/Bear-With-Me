@@ -24,6 +24,42 @@ class FormCorrectionBody(BaseModel):
     focus: str | None = None
 
 
+def _acquire_rate_limit_or_raise(rate_key: str) -> None:
+    ok, wait, reason = form_correction_try_acquire(rate_key)
+    if ok:
+        return
+    if reason == "in_flight":
+        raise HTTPException(
+            status_code=409,
+            detail="Another annotation request is already in progress.",
+        )
+    retry_after = max(1, int(math.ceil(wait)))
+    raise HTTPException(
+        status_code=429,
+        detail=(
+            f"Annotated form is limited to once every "
+            f"{int(FORM_CORRECTION_MIN_INTERVAL_SEC)} seconds. "
+            f"Retry in {retry_after}s."
+        ),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _decode_and_validate_image(raw: str, rate_key: str) -> bytes:
+    if len(raw) > 14_000_000:
+        form_correction_release_in_flight(rate_key)
+        raise HTTPException(status_code=413, detail="Image payload too large")
+    try:
+        image_bytes = decode_base64_image(raw)
+    except ValueError as exc:
+        form_correction_release_in_flight(rate_key)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if len(image_bytes) > 10_000_000:
+        form_correction_release_in_flight(rate_key)
+        raise HTTPException(status_code=413, detail="Decoded image too large")
+    return image_bytes
+
+
 @router.post("/form-correction")
 def form_correction(request: Request, body: FormCorrectionBody) -> dict[str, str]:
     """
@@ -32,38 +68,9 @@ def form_correction(request: Request, body: FormCorrectionBody) -> dict[str, str
     """
     client = request.client
     rate_key = f"ip:{client.host}" if client else "ip:unknown"
-    ok, wait, reason = form_correction_try_acquire(rate_key)
-    if not ok:
-        if reason == "in_flight":
-            raise HTTPException(
-                status_code=409,
-                detail="Another annotation request is already in progress.",
-            )
-        retry_after = max(1, int(math.ceil(wait)))
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                f"Annotated form is limited to once every "
-                f"{int(FORM_CORRECTION_MIN_INTERVAL_SEC)} seconds. "
-                f"Retry in {retry_after}s."
-            ),
-            headers={"Retry-After": str(retry_after)},
-        )
+    _acquire_rate_limit_or_raise(rate_key)
 
-    raw = body.image_base64.strip()
-    if len(raw) > 14_000_000:
-        form_correction_release_in_flight(rate_key)
-        raise HTTPException(status_code=413, detail="Image payload too large")
-
-    try:
-        image_bytes = decode_base64_image(raw)
-    except ValueError as exc:
-        form_correction_release_in_flight(rate_key)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if len(image_bytes) > 10_000_000:
-        form_correction_release_in_flight(rate_key)
-        raise HTTPException(status_code=413, detail="Decoded image too large")
+    image_bytes = _decode_and_validate_image(body.image_base64.strip(), rate_key)
 
     try:
         out_bytes, out_mime, notes = annotate_form_photo(
