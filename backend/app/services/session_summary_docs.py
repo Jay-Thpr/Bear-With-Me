@@ -12,6 +12,37 @@ from app.config import settings
 from app.db_models import Skill, SkillSessionSummary
 
 
+def _get_or_create_doc_id(
+    *,
+    docs: object,
+    drive: object,
+    title: str,
+    folder_id: str | None,
+) -> str:
+    document_id = _find_doc_id(drive=drive, title=title, folder_id=folder_id)
+    if not document_id:
+        document_id = _create_doc(docs=docs, drive=drive, title=title, folder_id=folder_id)
+    return document_id
+
+
+def _append_block_to_doc(*, docs: object, document_id: str, block: str) -> None:
+    doc = docs.documents().get(documentId=document_id).execute()  # type: ignore[attr-defined]
+    end_index = max(1, (doc.get("body", {}).get("content", [{}])[-1].get("endIndex", 1) or 1) - 1)
+    docs.documents().batchUpdate(  # type: ignore[attr-defined]
+        documentId=document_id,
+        body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"index": end_index},
+                        "text": block,
+                    }
+                }
+            ]
+        },
+    ).execute()
+
+
 def export_session_summary_to_docs(
     *,
     summary: SkillSessionSummary,
@@ -39,26 +70,12 @@ def export_session_summary_to_docs(
     owner = user_email or summary.user_sub
     title = f"Skill Quest — {owner} — {skill.title} Session Summaries"
     folder_id = settings.google_docs_export_folder_id.strip() or None
-    document_id = _find_doc_id(drive=drive, title=title, folder_id=folder_id)
-    if not document_id:
-        document_id = _create_doc(docs=docs, drive=drive, title=title, folder_id=folder_id)
 
+    document_id = _get_or_create_doc_id(
+        docs=docs, drive=drive, title=title, folder_id=folder_id
+    )
     block = _format_summary_block(summary=summary, skill=skill)
-    doc = docs.documents().get(documentId=document_id).execute()
-    end_index = max(1, (doc.get("body", {}).get("content", [{}])[-1].get("endIndex", 1) or 1) - 1)
-    docs.documents().batchUpdate(
-        documentId=document_id,
-        body={
-            "requests": [
-                {
-                    "insertText": {
-                        "location": {"index": end_index},
-                        "text": block,
-                    }
-                }
-            ]
-        },
-    ).execute()
+    _append_block_to_doc(docs=docs, document_id=document_id, block=block)
 
     return {
         "document_id": document_id,
